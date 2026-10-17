@@ -1,0 +1,11 @@
+# Home-screen widgets
+
+Compact (2×2), Standard (4×2) and Expanded (4×4) are Glance AppWidgets with responsive size variants. Compact shows artwork and play/next. Standard adds title, artist and previous. Expanded adds album where space permits, elapsed/duration progress, shuffle, repeat and an entry to the full player. Smaller launcher constraints fall back to a compact/standard layout. Artwork is decoded off the main thread with bounded sampling and a local fallback.
+
+Controls connect a MediaController to the existing PlaybackService and release it after the command. They never create an ExoPlayer or a second session. If necessary, a saved queue is restored through that controller before a user command. Artwork and progress launch Now Playing; there is no fake widget seek bar.
+
+The service publishes authoritative event snapshots. A conflated channel with a 200 ms debounce persists and refreshes widgets. Provider update periods are zero; there is no widget polling loop or periodic alarm to animate progress. At 1× while playing, an Android Chronometer advances elapsed time in the host. At other speeds, progress is an event snapshot; open the player for continuous progress. Pause/seek/track/speed events refresh it. Dark and translucent-scrim themes, accent choices and rounded backgrounds work without an album cover.
+
+On a fresh process/render, the saved queue supplies paused state and stale playing flags are suppressed when the service is absent. A forced stop/abrupt process death can leave the launcher's last RemoteViews visible until its next refresh/reopen; widgets cannot receive a final event from a process that was killed. Android owns restart/restriction behavior. Device restart, launcher variants and Android 12+ foreground-start policies still need physical-device acceptance.
+
+Instrumentation binds real AppWidgetHost views at three sizes, verifies generated RemoteViews, and uses widget button PendingIntents as well as the shared controller command path. The targeted native check passed; the final regression outcome is recorded in TESTING.md. The test grants and revokes widget-binding capability only for the emulator test host; the app does not request BIND_APPWIDGET permission. Receivers require that system permission, while their own PendingIntents remain usable.

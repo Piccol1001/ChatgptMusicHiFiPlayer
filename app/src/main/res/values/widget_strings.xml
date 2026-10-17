@@ -1,0 +1,9 @@
+<resources>
+    <string name="widget_compact_name">HiFi · Compact</string>
+    <string name="widget_standard_name">HiFi · Standard</string>
+    <string name="widget_expanded_name">HiFi · Expanded</string>
+    <string name="widget_compact_description">Artwork, play/pause and next track</string>
+    <string name="widget_standard_description">Artwork, title, artist and playback controls</string>
+    <string name="widget_expanded_description">Artwork, progress, playback, shuffle and repeat</string>
+    <string name="widget_loading">HiFi Player</string>
+</resources>

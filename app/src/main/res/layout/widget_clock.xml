@@ -1,0 +1,1 @@
+<Chronometer xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_elapsed" android:layout_width="match_parent" android:layout_height="26dp" android:gravity="center" android:textColor="#E8EEF8" android:textSize="14sp" />

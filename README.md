@@ -1,57 +1,57 @@
 # HiFi Player
 
-A native, local-only Android music player built with Kotlin, Compose Material 3, and Media3. This repository starts with **Phase 1** of the [product requirements](docs/PRODUCT_REQUIREMENTS.md). It is not the completed five-phase product. See [FEATURE_STATUS.md](FEATURE_STATUS.md) for the exact scope.
+A native, offline Android music player built with Kotlin, Compose Material 3, Media3, Room and DataStore. It includes working EQ, six PCM visualizers, local AutoEq profiles, lyrics, output information, smart playlists and three Glance widgets. **Some acceptance remains incomplete**, especially sample-exact MP3 transitions and physical-device audio/performance checks. See [feature status](FEATURE_STATUS.md), [testing](TESTING.md) and [phase reports](docs/PHASE_REPORTS.md).
 
-## Build
+## APKs and build
 
-Use Android Studio with JDK 17 or 21, Android SDK Platform 36 and Build Tools 35.0.0. Android 8.0 / API 26 is the minimum; target SDK is 36. Set `ANDROID_HOME` or create an untracked `local.properties` with `sdk.dir`.
+Current evaluation artifacts and SHA-256 checksums are in [artifacts/apk](artifacts/apk/README.md). Install the **debug APK**. The release APK is unsigned and needs an owner's release signing configuration. Signing keys and credentials are not committed.
 
 ```sh
 ./gradlew assembleDebug testDebugUnitTest lintDebug assembleRelease
-./gradlew connectedDebugAndroidTest # requires an Android device or emulator
+./gradlew connectedDebugAndroidTest # connected Android device/emulator required
 ```
 
-Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. The release APK is unsigned; supply your own signing configuration for distribution. Never commit signing credentials.
+Use JDK 17 or 21, Android SDK Platform 36 and Build Tools 35.0.0. Minimum Android is 8.0 / API 26; compile/target SDK is 36. Gradle 8.13, AGP 8.13.2 and Kotlin 2.2.21 are pinned. Set `ANDROID_HOME` or an untracked `local.properties`. Generated APKs are under `app/build/outputs/apk/`.
 
-Prebuilt version 0.1.0 APKs and SHA-256 checksums are included in [artifacts/apk](artifacts/apk/README.md). Use the debug APK for installation; the release artifact is unsigned. Review the known limitations before evaluating either build.
-
-In the prepared Codex machine, first run `source /workspace/.tooling/env.sh`. Build caches and tools live outside the checkout. There is no application backend to start, no account, and no runtime API key. Android devices and emulators run the application; this is not a web application.
+In this prepared Codex environment, first run `source /workspace/.tooling/env.sh`. Toolchains and caches are outside the checkout. This is an Android application: there is no web server, backend, account or API key to start.
 
 ## Use
 
-1. Allow music access, or choose a folder using Android's folder picker. Add more folders in Settings. Android may restrict selecting storage roots; choose a music subfolder instead.
-2. Browse songs, albums, artists, genres or folders. Search title, artist and album; change sorting or filter the reported MIME type. Favorites and listening history are local.
-3. Tap a song to play it. Use its menu to play next, enqueue, favorite, or add to a playlist. The play-collection action queues up to 1,000 matching songs; a message reports the cap. Library browsing itself is paged.
-4. Open Playing for seek, shuffle, repeat, queue editing and queue-to-playlist saving. Queue movement uses accessible up/down buttons in this phase. Notification and compatible headset controls use the same media session.
-5. The queue and position are saved periodically while playing and after changes. Relaunch restores the queue **paused**, avoiding unexpected speaker playback. An abrupt kill may lose up to five seconds of position. Android force-stop stops playback until you reopen the app.
+1. Allow music access or choose a music folder. Multiple persisted SAF folders are supported; Android can restrict storage-root selection. Browse/search/sort the paged library, mark favorites and build playlists.
+2. Open Playing for transport, seek, shuffle, repeat, queue editing, audio information and lyrics. Notification/headset controls share the same media session. The saved queue restores **paused**; abrupt process death can lose up to five seconds of position.
+3. In Equalizer, choose 10-band, 31-band or parametric processing; edit numeric values or drag the response controls. There are 58 original presets, custom preset CRUD/favorites/recents and local JSON import/export. ReplayGain reads supported real metadata.
+4. Open AutoEq/output profiles to import compatible local text, preview and save a correction. Assign a default or an output category. Editing an active profile preserves separately stored personal EQ. No headphone dataset or network download is bundled.
+5. Open Visualizer for measured spectrum, waveform, stereo meters, spectrogram, circular spectrum and three original shader effects. FFT/FPS/quality/color settings, fullscreen and reduced decorative motion are available. Analysis suspends when hidden or paused.
+6. Import `.lrc` or plain text lyrics, use compatible embedded lyrics, or authorize a music folder for sibling-file matching. Timed lines highlight/scroll and can seek the existing player.
+7. Add Compact, Standard or Expanded widgets from Settings or the launcher's widget picker. Theme/accent settings apply to widgets; artwork/progress opens Now Playing.
+8. Create smart playlist rules for metadata, play count, date, favorites and format. M3U8 import/export uses exact indexed content URIs; portable filesystem paths are reported as unresolved.
 
-Audio files are never edited, moved or deleted. Removing a playlist removes its membership only. Removing a folder relinquishes its persisted access; cached entries are marked unavailable.
+The play-collection action queues up to 1,000 matching songs and reports that cap. Browsing is paged. Playlist membership contains unique songs, while queues can contain repeated items. Source audio files are never edited, moved or deleted. Missing sources are marked unavailable so playlist/favorite/history relationships are retained.
 
-## Formats and audio honesty
+## Formats and audio limits
 
-| Format | Decoder path | Validation |
-| --- | --- | --- |
-| MP3, FLAC, WAV PCM, AAC/M4A, Vorbis/OGG, Opus | Media3 extraction and Android decoders | See TESTING.md for actual execution results; availability can vary by device, container and encoding |
-| ALAC | No bundled extension decoder | Unverified; not advertised as supported |
-| AIFF | No compatible extractor/decoder integrated | Pending Phase 4 |
+| Format | Current evidence |
+| --- | --- |
+| MP3, FLAC, WAV PCM, AAC/M4A, Vorbis/OGG, Opus | Generated fixtures played through the production service on API 28 |
+| AIFF/AIFC signed PCM | Original streaming extractor; 16-bit/48 kHz and 24-bit/96 kHz playback/seeking tested; other supported widths/rates still need device coverage |
+| ALAC | Uses an available platform decoder; the API 28 image has none and an explicit unsupported message was tested; no extension decoder bundled |
 
-The app uses the normal Android audio route. Custom EQ, ReplayGain, crossfade, direct USB output, lyrics and widgets are pending. There is no system-wide equalizer or bit-perfect claim. EQ and Visualizer destinations are explicitly unavailable rather than simulated.
+The DSP/output path converts to **16-bit PCM**. High-resolution source decoding does not establish 24-bit hardware output. The output screen distinguishes source, processing, AudioTrack client format and device-reported capabilities. No exclusive, direct USB or bit-perfect mode is offered.
+
+FLAC transition frame totals and AudioTrack reuse were verified. Sample-exact MP3 gapless remains incomplete on the tested API 28 Google decoder: diagnostics found 22–551 boundary frames and a terminal decoder tail. Its strict regression is explicitly skipped on that known decoder combination and can be forced as documented in TESTING.md. Crossfade and CUE are not implemented.
 
 ## Architecture
 
-- `library/`: MediaStore volume discovery, persistable SAF tree access and metadata extraction on IO workers. Refresh is serialized; MediaStore changes trigger a debounced refresh while the UI model lives. Manually refresh SAF folders after external edits.
-- `data/`: Room track index, playlist membership, favorites and history; parameterized SQL with Paging. DataStore owns preferences, selected trees and queue snapshots.
-- `playback/`: one ExoPlayer inside one MediaSessionService. It owns focus, noisy-route handling, session metadata, notifications and the playback timeline. The UI connects with MediaController; it never creates a second player.
-- `ui/`: an AndroidViewModel exposes repository flows and session state. Position polling occurs only while its playback state has subscribers. Compose renders state and sends commands.
+- `playback/`: one ExoPlayer and MediaSessionService, focus/noisy handling, notifications and saved queue. UI and widgets use MediaController.
+- `dsp/`: PCM processor, immutable coefficient plans, stable biquads, smoothed changes, presets and supported-tag ReplayGain. [Design/limits](docs/DSP.md).
+- `visualization/`: bounded nonblocking tap analysis, calibrated windowed FFT, Canvas displays and original OpenGL ES shaders. [Details](docs/VISUALIZERS.md).
+- `audio/`: validated local AutoEq, output monitoring/profiles, lyrics and AIFF extraction. [Details](docs/ADVANCED_AUDIO.md).
+- `data/`, `library/`: Room index/playlists/favorites/history, parameterized Paging queries, SAF/MediaStore reads and local DataStores. Room remains at schema version 1.
+- `widgets/`: three responsive Glance layouts with event-driven shared state and controls of the existing session. [Details](docs/WIDGETS.md).
+- `ui/`: Compose screens and view-model flows. Queue lists are cached between timeline changes; position ticks stop when playback/UI observation stops.
 
-Unavailable files are retained in the database so playlist references and favorites survive storage removal. Where a document provider supports MediaStore mapping, the scanner reuses that identity. Providers without stable mappings can expose the same file under multiple URIs; cross-provider deduplication remains limited. Before API 29 the folder view for MediaStore items uses a broad device-music group; selected SAF directories retain folder names.
+## Privacy and remaining checks
 
-## Pinned dependencies
+No Internet, microphone or all-files permission; no accounts, ads, analytics or cloud dependency. Backups/device transfer are excluded. Settings includes selectable offline dependency licenses; the [runtime inventory](docs/DEPENDENCIES.md) and [notices](THIRD_PARTY_NOTICES.md) are included in the repository. Imports and settings stay local. The app uses scoped read access and explicitly selected export destinations.
 
-Gradle 8.13 (wrapper SHA-256 verified), Android Gradle Plugin 8.13.2, Kotlin/Compose compiler 2.2.21, KSP 2.2.21-2.0.4, Compose BOM 2025.12.01, Media3 1.8.0, Room 2.8.4, DataStore 1.2.0, Lifecycle 2.10.0, Paging 3.3.6, Coil 2.7.0, Coroutines 1.10.2. Exact declarations are in the Gradle files. Room schemas are exported for later migration work.
-
-## Privacy
-
-The manifest contains no `INTERNET`, microphone, all-files, advertising or analytics permissions. Artwork and tags come from local providers. No remote artwork, lyrics, profile or metadata fetching is implemented. Backups are disabled to keep the database and preferences local. Development dependency downloads do require network access.
-
-See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md), [TESTING.md](TESTING.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Physical Bluetooth/USB/headphone removal, incoming calls, launcher variants, battery/thermal behavior and prolonged listening remain device acceptance work. Software-emulator cold-start ANRs/slow frames were observed; physical startup performance is not certified. Album-derived accents, portable M3U paths, crossfade and CUE remain unavailable. The original scope is preserved in [requirements](docs/PRODUCT_REQUIREMENTS.md) and the [remaining-phase prompt](docs/REMAINING_PHASES_REQUIREMENTS.md).
