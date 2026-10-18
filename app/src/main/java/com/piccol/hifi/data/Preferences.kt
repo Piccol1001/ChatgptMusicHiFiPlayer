@@ -15,6 +15,10 @@ data class Settings(
     val technicalInfo: Boolean = true,
     val accent: Int = 0,
     val detailedList: Boolean = false,
+    val amoled: Boolean = true,
+    val artworkColor: Boolean = false,
+    val artworkGradient: Boolean = true,
+    val artworkCorners: Int = 20,
 )
 
 data class SavedItem(
@@ -44,6 +48,10 @@ class Preferences(context: Context) {
                 it[booleanPreferencesKey("technical")] ?: true,
                 it[intPreferencesKey("accent")] ?: 0,
                 it[booleanPreferencesKey("detailed_list")] ?: false,
+                it[booleanPreferencesKey("amoled")] ?: true,
+                it[booleanPreferencesKey("artwork_color")] ?: false,
+                it[booleanPreferencesKey("artwork_gradient")] ?: true,
+                (it[intPreferencesKey("artwork_corners")] ?: 20).coerceIn(0, 32),
             )
         }
     val folders = values.map { it[stringSetPreferencesKey("folders")] ?: emptySet() }
@@ -76,6 +84,20 @@ class Preferences(context: Context) {
 
     suspend fun accent(value: Int) {
         store.edit { it[intPreferencesKey("accent")] = value }
+    }
+
+    suspend fun appearance(
+        amoled: Boolean? = null,
+        artworkColor: Boolean? = null,
+        gradient: Boolean? = null,
+        corners: Int? = null,
+    ) {
+        store.edit { p ->
+            amoled?.let { p[booleanPreferencesKey("amoled")] = it }
+            artworkColor?.let { p[booleanPreferencesKey("artwork_color")] = it }
+            gradient?.let { p[booleanPreferencesKey("artwork_gradient")] = it }
+            corners?.let { p[intPreferencesKey("artwork_corners")] = it.coerceIn(0, 32) }
+        }
     }
 
     suspend fun snapshot(): QueueSnapshot =

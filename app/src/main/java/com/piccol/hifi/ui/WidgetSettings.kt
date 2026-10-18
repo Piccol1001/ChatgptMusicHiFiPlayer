@@ -5,6 +5,8 @@ import android.content.ComponentName
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Animation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -76,14 +78,12 @@ fun WidgetSettings(vm: PlayerViewModel) {
 @Composable
 fun MotionSettings(vm: PlayerViewModel) {
     val visual by vm.visualSettings.collectAsStateWithLifecycle()
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Reduce decorative visualizer motion", Modifier.weight(1f))
+    SettingRow(
+        "Reduce motion",
+        "Stops decorative rotation and shader animation",
+        Icons.Rounded.Animation,
+        trailing = {
             Switch(visual.reducedMotion, { v -> vm.changeVisual { it.copy(reducedMotion = v) } })
-        }
-        Text(
-            "Disables automatic circular rotation and shader time animation. Audio measurements still respond to music.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
+        },
+    )
 }

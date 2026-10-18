@@ -3,25 +3,35 @@ package com.piccol.hifi.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,7 +48,7 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class)
 @UnstableApi
 @Composable
-fun EqualizerScreen(vm: PlayerViewModel, profiles: () -> Unit = {}) {
+fun EqualizerScreen(vm: PlayerViewModel, presetRequest: Int = 0, profiles: () -> Unit = {}) {
     val profileState by vm.profileState.collectAsStateWithLifecycle()
     val route by vm.outputRoute.collectAsStateWithLifecycle()
     val settings by vm.dspSettings.collectAsStateWithLifecycle()
@@ -58,6 +68,10 @@ fun EqualizerScreen(vm: PlayerViewModel, profiles: () -> Unit = {}) {
     val recent by vm.recentPresets.collectAsStateWithLifecycle()
     val tags by vm.replayTags.collectAsStateWithLifecycle()
     var presetSheet by remember { mutableStateOf(false) }
+    var editingFilter by remember { mutableStateOf<Int?>(null) }
+    var engineInfo by remember { mutableStateOf(false) }
+    var headroomInfo by remember { mutableStateOf(false) }
+    LaunchedEffect(presetRequest) { if (presetRequest > 0) presetSheet = true }
     var save by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
@@ -109,281 +123,402 @@ fun EqualizerScreen(vm: PlayerViewModel, profiles: () -> Unit = {}) {
     fun change(transform: (DspSettings) -> DspSettings) {
         vm.changeDsp { transform(it).copy(preset = "Custom") }
     }
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            TextButton(profiles) { Text("AutoEq & output profiles") }
-            profileState.active(route)?.let { p ->
-                Text(
-                    "Editing active profile: ${p.name}",
-                    style = MaterialTheme.typography.labelSmall,
-                )
-                TextButton(vm::useBaseEq) { Text("Return to personal EQ") }
-            }
-        }
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(settings.preset, style = MaterialTheme.typography.headlineSmall)
-                    Text("App audio · PCM processing", style = MaterialTheme.typography.labelSmall)
-                }
-                Switch(settings.enabled, { vm.changeDsp { s -> s.copy(enabled = it) } })
-            }
-        }
-        item {
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                EqMode.entries.forEach { mode ->
-                    FilterChip(
-                        settings.mode == mode,
-                        { vm.changeDsp { it.copy(mode = mode) } },
-                        label = {
-                            Text(
-                                when (mode) {
-                                    EqMode.TEN -> "10 bands"
-                                    EqMode.PARAMETRIC -> "Parametric"
-                                    EqMode.THIRTY_ONE -> "31 bands"
-                                }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxHeight < 600.dp
+        val graphMinimum = (80 + 24 * LocalDensity.current.fontScale).dp
+        val graphHeight =
+            if (compact) (maxHeight * .22f).coerceIn(graphMinimum, maxOf(graphMinimum, 144.dp))
+            else 192.dp
+        val bandHeight = if (compact) (maxHeight * .20f).coerceIn(88.dp, 132.dp) else 176.dp
+        LazyColumn(
+            contentPadding =
+                PaddingValues(horizontal = 16.dp, vertical = if (compact) 8.dp else 16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
+        ) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton({ presetSheet = true }, Modifier.weight(1f)) {
+                        Text(settings.preset, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Icon(Icons.Rounded.ExpandMore, null)
+                    }
+                    IconButton({ save = true }) {
+                        Icon(Icons.Rounded.BookmarkAdd, "Save custom preset")
+                    }
+                    IconButton({
+                        change {
+                            it.copy(
+                                ten = List(10) { 0.0 },
+                                thirtyOne = List(31) { 0.0 },
+                                filters = TEN_BANDS.map { f -> EqFilter(frequency = f) },
+                                preamp = 0.0,
                             )
-                        },
+                        }
+                    }) {
+                        Icon(Icons.Rounded.RestartAlt, "Reset all EQ bands")
+                    }
+                }
+                profileState.active(route)?.let { p ->
+                    Text("Editing profile · ${p.name}", style = MaterialTheme.typography.bodySmall)
+                    TextButton(vm::useBaseEq) { Text("Return to personal EQ") }
+                }
+            }
+            item {
+                val wideTabs = LocalDensity.current.fontScale > 1.2f || maxWidth < 340.dp
+                Row(
+                    Modifier.fillMaxWidth()
+                        .then(
+                            if (wideTabs) Modifier.horizontalScroll(rememberScrollState())
+                            else Modifier
+                        ),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    EqMode.entries.forEach { mode ->
+                        CompactTab(
+                            when (mode) {
+                                EqMode.TEN -> "10 bands"
+                                EqMode.PARAMETRIC -> "Parametric"
+                                EqMode.THIRTY_ONE -> "31 bands"
+                            },
+                            settings.mode == mode,
+                            { vm.changeDsp { it.copy(mode = mode) } },
+                            modifier = if (wideTabs) Modifier else Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+            item {
+                ResponseGraph(settings, format.rate, graphHeight) { index, f, g ->
+                    change { s ->
+                        s.copy(
+                            filters =
+                                s.filters.mapIndexed { i, old ->
+                                    if (i == index) old.copy(frequency = f, gain = g) else old
+                                }
+                        )
+                    }
+                }
+            }
+            if (settings.mode != EqMode.PARAMETRIC)
+                item {
+                    val frequencies = if (settings.mode == EqMode.TEN) TEN_BANDS else THIRD_OCTAVE
+                    val gains =
+                        if (settings.mode == EqMode.TEN) settings.ten else settings.thirtyOne
+                    Text(
+                        "Drag a band · tap its value for exact gain",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        frequencies.forEachIndexed { i, f ->
+                            val update: (Double) -> Unit = { gain ->
+                                change { s ->
+                                    if (s.mode == EqMode.TEN)
+                                        s.copy(ten = s.ten.toMutableList().apply { set(i, gain) })
+                                    else
+                                        s.copy(
+                                            thirtyOne =
+                                                s.thirtyOne.toMutableList().apply { set(i, gain) }
+                                        )
+                                }
+                            }
+                            Column(
+                                Modifier.width(
+                                    if (LocalDensity.current.fontScale > 1.3f) 72.dp else 56.dp
+                                ),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                TextButton(
+                                    { numeric = frequencyLabel(f) to (gains[i] to update) },
+                                    contentPadding = PaddingValues(0.dp),
+                                ) {
+                                    Text(
+                                        "%+.1f".format(gains[i]),
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                }
+                                VerticalGain(
+                                    gains[i],
+                                    f < format.rate * .5,
+                                    frequencyLabel(f),
+                                    update,
+                                    bandHeight,
+                                )
+                                Text(frequencyLabel(f), style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            if (settings.mode == EqMode.PARAMETRIC) {
+                item {
+                    SectionHeading(
+                        "Filters",
+                        "${settings.filters.size} active slots · tap to edit",
+                    ) {
+                        IconButton(
+                            {
+                                change {
+                                    it.copy(filters = it.filters + EqFilter(frequency = 1000.0))
+                                }
+                            },
+                            enabled = settings.filters.size < 32,
+                        ) {
+                            Icon(Icons.Rounded.Add, "Add filter")
+                        }
+                    }
+                }
+                items(settings.filters.size) { i ->
+                    val f = settings.filters[i]
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        onClick = { editingFilter = i },
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "${i+1} · ${f.type.name.replace('_',' ')}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                Text(
+                                    "${frequencyLabel(f.frequency)} · ${if(f.type==FilterType.LOW_PASS||f.type==FilterType.HIGH_PASS)"cutoff" else "%+.1f dB".format(f.gain)} · Q %.2f"
+                                        .format(f.q),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                f.enabled,
+                                { enabled ->
+                                    change { s ->
+                                        s.copy(
+                                            filters =
+                                                s.filters.mapIndexed { j, old ->
+                                                    if (j == i) old.copy(enabled = enabled) else old
+                                                }
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = .08f))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Preamp", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "%+.1f dB".format(settings.preamp),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
+                Slider(
+                    settings.preamp.toFloat(),
+                    { value -> change { it.copy(preamp = (value * 4).roundToInt() / 4.0) } },
+                    valueRange = -24f..12f,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Automatic headroom",
+                        Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Switch(
+                        settings.autoHeadroom,
+                        { enabled -> change { it.copy(autoHeadroom = enabled) } },
+                    )
+                }
+                val effective =
+                    remember(settings, format.rate) { effectivePreamp(settings, format.rate) }
+                Text(
+                    if (settings.enabled)
+                        "Compensation %+.1f dB · Applied %+.1f dB"
+                            .format(effective - settings.preamp, effective)
+                    else "EQ bypassed · applied EQ preamp 0.0 dB",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton({ headroomInfo = !headroomInfo }) {
+                    Icon(Icons.Rounded.Info, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Headroom explained")
+                }
+                if (headroomInfo)
+                    Text(
+                        "Requested preamp is your slider setting. Automatic headroom can lower it using the combined response and a 0.5 dB safety margin. Applied is the effective EQ preamp; ReplayGain is separate. When EQ is bypassed, its filters and preamp are not applied.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+            }
+            item {
+                SettingRow(
+                    "AutoEq & output profiles",
+                    "Import and assign local correction profiles",
+                    Icons.Rounded.Headphones,
+                    profiles,
+                )
+            }
+            item {
+                HorizontalDivider()
+                Text("ReplayGain", style = MaterialTheme.typography.titleLarge)
+                Row {
+                    ReplayMode.entries.forEach { mode ->
+                        FilterChip(
+                            settings.replayMode == mode,
+                            { vm.changeDsp { it.copy(replayMode = mode) } },
+                            label = { Text(mode.name) },
+                        )
+                    }
+                }
+                Text("ReplayGain preamp: ${"%.1f".format(settings.replayPreamp)} dB")
+                Slider(
+                    settings.replayPreamp.toFloat(),
+                    { value ->
+                        vm.changeDsp { it.copy(replayPreamp = (value * 4).roundToInt() / 4.0) }
+                    },
+                    valueRange = -12f..12f,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Prevent clipping using file peak", Modifier.weight(1f))
+                    Switch(
+                        settings.preventClipping,
+                        { v -> vm.changeDsp { it.copy(preventClipping = v) } },
+                    )
+                }
+                Text(
+                    if (tags.decoderGainActive)
+                        "Decoder header gain is active; extra ReplayGain is bypassed to avoid applying gain twice."
+                    else if (tags.trackGain == null && tags.albumGain == null)
+                        "No supported ReplayGain tag in the current track; no ReplayGain adjustment is applied."
+                    else
+                        "Current ReplayGain adjustment: %.2f dB".format(replayGain(settings, tags)),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "Reads ID3 TXXX and FLAC/Vorbis comments. R128/decoder gain is not reapplied. No dynamic compressor or limiter is added.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            item {
+                TextButton({ engineInfo = !engineInfo }) {
+                    Text("Technical details")
+                    Icon(
+                        if (engineInfo) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        null,
+                    )
+                }
+                if (engineInfo)
+                    Text(
+                        "16-bit PCM · ${format.rate} Hz · ${clips} clipped samples this service session. No bit-perfect claim. Bands at/above Nyquist are bypassed; mode conversion interpolates control gains and is approximate.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
             }
         }
-        item {
-            ResponseGraph(settings, format.rate) { index, f, g ->
+    }
+    editingFilter
+        ?.takeIf { it in settings.filters.indices }
+        ?.let { index ->
+            val f = settings.filters[index]
+            fun edit(transform: (EqFilter) -> EqFilter) {
                 change { s ->
                     s.copy(
                         filters =
                             s.filters.mapIndexed { i, old ->
-                                if (i == index) old.copy(frequency = f, gain = g) else old
+                                if (i == index) transform(old) else old
                             }
                     )
                 }
             }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton({ presetSheet = true }) { Text("Presets") }
-                TextButton({ save = true }) { Text("Save custom") }
-                TextButton({
-                    change {
-                        it.copy(
-                            ten = List(10) { 0.0 },
-                            thirtyOne = List(31) { 0.0 },
-                            filters = TEN_BANDS.map { f -> EqFilter(frequency = f) },
-                            preamp = 0.0,
-                        )
-                    }
-                }) {
-                    Text("Reset all")
-                }
-            }
-        }
-        item {
-            Text(
-                "Preamp · ${"%.1f".format(settings.preamp)} dB",
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Slider(
-                settings.preamp.toFloat(),
-                { value -> change { it.copy(preamp = (value * 4).roundToInt() / 4.0) } },
-                valueRange = -24f..12f,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Automatic headroom", Modifier.weight(1f))
-                Switch(
-                    settings.autoHeadroom,
-                    { enabled -> change { it.copy(autoHeadroom = enabled) } },
-                )
-            }
-            val headroom =
-                remember(settings, format.rate) { effectivePreamp(settings, format.rate) }
-            Text(
-                "Applied EQ preamp: ${"%.1f".format(headroom)} dB when enabled. Headroom estimate includes the combined response and a 0.5 dB safety margin.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            TextButton({ change { it.copy(preamp = 0.0) } }) { Text("Reset preamp") }
-        }
-        if (settings.mode != EqMode.PARAMETRIC)
-            item {
-                val frequencies = if (settings.mode == EqMode.TEN) TEN_BANDS else THIRD_OCTAVE
-                val gains = if (settings.mode == EqMode.TEN) settings.ten else settings.thirtyOne
-                Text(
-                    "Scroll bands · tap a gain for exact entry",
-                    style = MaterialTheme.typography.labelSmall,
-                )
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ModalBottomSheet({ editingFilter = null }) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    frequencies.forEachIndexed { i, f ->
-                        val update: (Double) -> Unit = { gain ->
-                            change { s ->
-                                if (s.mode == EqMode.TEN)
-                                    s.copy(ten = s.ten.toMutableList().apply { set(i, gain) })
-                                else
-                                    s.copy(
-                                        thirtyOne =
-                                            s.thirtyOne.toMutableList().apply { set(i, gain) }
-                                    )
-                            }
+                    Text("Filter ${index+1}", style = MaterialTheme.typography.titleLarge)
+                    var types by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedButton({ types = true }) {
+                            Text(f.type.name.replace('_', ' '))
+                            Icon(Icons.Rounded.ExpandMore, null)
                         }
-                        Column(
-                            Modifier.width(64.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            TextButton({ numeric = frequencyLabel(f) to (gains[i] to update) }) {
-                                Text("%+.1f".format(gains[i]))
-                            }
-                            VerticalGain(gains[i], f < format.rate * .5, frequencyLabel(f), update)
-                            Text(frequencyLabel(f), style = MaterialTheme.typography.labelSmall)
-                            IconButton({ update(0.0) }) {
-                                Icon(Icons.Rounded.RestartAlt, "Reset ${frequencyLabel(f)}")
-                            }
-                        }
-                    }
-                }
-                Text(
-                    "Bands at or above Nyquist are bypassed. 10/31-band preset mapping interpolates control gains; the resulting response can differ because bandwidths differ.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        if (settings.mode == EqMode.PARAMETRIC)
-            items(settings.filters.size) { i ->
-                val f = settings.filters[i]
-                fun edit(transform: (EqFilter) -> EqFilter) {
-                    change { s ->
-                        s.copy(
-                            filters =
-                                s.filters.mapIndexed { j, old ->
-                                    if (j == i) transform(old) else old
-                                }
-                        )
-                    }
-                }
-                Card {
-                    Column(Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Filter ${i+1}", Modifier.weight(1f))
-                            Switch(f.enabled, { enabled -> edit { it.copy(enabled = enabled) } })
-                        }
-                        Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        DropdownMenu(types, { types = false }) {
                             FilterType.entries.forEach { type ->
-                                FilterChip(
-                                    f.type == type,
-                                    { edit { it.copy(type = type) } },
-                                    label = { Text(type.name.replace('_', ' ')) },
+                                DropdownMenuItem(
+                                    text = { Text(type.name.replace('_', ' ')) },
+                                    onClick = {
+                                        edit { it.copy(type = type) }
+                                        types = false
+                                    },
                                 )
                             }
                         }
-                        Row {
-                            TextButton({
-                                numeric =
-                                    "Frequency (10–24000 Hz)" to
-                                        (f.frequency to
-                                            { value: Double ->
-                                                if (value in 10.0..24000.0)
-                                                    edit { it.copy(frequency = value) }
-                                            })
-                            }) {
-                                Text(frequencyLabel(f.frequency))
-                            }
-                            if (f.type != FilterType.LOW_PASS && f.type != FilterType.HIGH_PASS)
-                                TextButton({
-                                    numeric =
-                                        "Gain (−12 to +12 dB)" to
-                                            (f.gain to
-                                                { value: Double ->
-                                                    if (value in -12.0..12.0)
-                                                        edit { it.copy(gain = value) }
-                                                })
-                                }) {
-                                    Text("%+.2f dB".format(f.gain))
-                                }
-                            TextButton({
-                                numeric =
-                                    "Q (0.1–18)" to
-                                        (f.q to
-                                            { value: Double ->
-                                                if (value in .1..18.0) edit { it.copy(q = value) }
-                                            })
-                            }) {
-                                Text("Q %.2f".format(f.q))
-                            }
-                        }
-                        if (f.type == FilterType.LOW_PASS || f.type == FilterType.HIGH_PASS)
-                            Text(
-                                "Pass filters use cutoff and Q; gain does not apply.",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
+                    }
+                    TextButton({
+                        numeric =
+                            "Frequency (10–24000 Hz)" to
+                                (f.frequency to { v -> edit { it.copy(frequency = v) } })
+                    }) {
+                        Text("Frequency · ${frequencyLabel(f.frequency)}")
+                    }
+                    if (f.type != FilterType.LOW_PASS && f.type != FilterType.HIGH_PASS)
                         TextButton({
-                            edit { EqFilter(frequency = TEN_BANDS[i.coerceAtMost(9)]) }
+                            numeric =
+                                "Gain (−12 to +12 dB)" to
+                                    (f.gain to { v -> edit { it.copy(gain = v) } })
+                        }) {
+                            Text("Gain · %+.2f dB".format(f.gain))
+                        }
+                    TextButton({
+                        numeric = "Q (0.1–18)" to (f.q to { v -> edit { it.copy(q = v) } })
+                    }) {
+                        Text("Q · %.2f".format(f.q))
+                    }
+                    Row {
+                        TextButton({
+                            edit { EqFilter(frequency = TEN_BANDS[index.coerceAtMost(9)]) }
                         }) {
                             Text("Reset filter")
                         }
+                        TextButton(
+                            {
+                                change {
+                                    it.copy(
+                                        filters = it.filters.filterIndexed { i, _ -> i != index }
+                                    )
+                                }
+                                editingFilter = null
+                            },
+                            enabled = settings.filters.size > 10,
+                        ) {
+                            Text("Remove filter")
+                        }
                     }
+                    if (settings.filters.size == 10)
+                        Text(
+                            "At least ten filter slots are retained; disable a slot to bypass it.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                 }
             }
-        item {
-            HorizontalDivider()
-            Text("ReplayGain", style = MaterialTheme.typography.titleLarge)
-            Row {
-                ReplayMode.entries.forEach { mode ->
-                    FilterChip(
-                        settings.replayMode == mode,
-                        { vm.changeDsp { it.copy(replayMode = mode) } },
-                        label = { Text(mode.name) },
-                    )
-                }
-            }
-            Text("ReplayGain preamp: ${"%.1f".format(settings.replayPreamp)} dB")
-            Slider(
-                settings.replayPreamp.toFloat(),
-                { value ->
-                    vm.changeDsp { it.copy(replayPreamp = (value * 4).roundToInt() / 4.0) }
-                },
-                valueRange = -12f..12f,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Prevent clipping using file peak", Modifier.weight(1f))
-                Switch(
-                    settings.preventClipping,
-                    { v -> vm.changeDsp { it.copy(preventClipping = v) } },
-                )
-            }
-            Text(
-                if (tags.decoderGainActive)
-                    "Decoder header gain is active; extra ReplayGain is bypassed to avoid applying gain twice."
-                else if (tags.trackGain == null && tags.albumGain == null)
-                    "No supported ReplayGain tag in the current track; no ReplayGain adjustment is applied."
-                else "Current ReplayGain adjustment: %.2f dB".format(replayGain(settings, tags)),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                "Reads ID3 TXXX and FLAC/Vorbis comments. R128/decoder gain is not reapplied. No dynamic compressor or limiter is added.",
-                style = MaterialTheme.typography.bodySmall,
-            )
         }
-        item {
-            Text(
-                "DSP clips detected this service session: ${clips}. No bit-perfect output claim. Processing uses 16-bit PCM after Media3 conversion; float/offload bypass is disabled.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        item {
-            Row {
-                TextButton({ importer.launch(arrayOf("application/json", "text/plain")) }) {
-                    Text("Import presets")
-                }
-                TextButton({ exporter.launch("hifi-presets.json") }) { Text("Export presets") }
-            }
-        }
-    }
+
     if (save)
         PresetNameDialog("Save custom preset", "", { save = false }) {
             vm.savePreset(it)
@@ -407,6 +542,12 @@ fun EqualizerScreen(vm: PlayerViewModel, profiles: () -> Unit = {}) {
     if (presetSheet)
         ModalBottomSheet({ presetSheet = false }) {
             Column(Modifier.padding(16.dp)) {
+                Row {
+                    TextButton({ importer.launch(arrayOf("application/json", "text/plain")) }) {
+                        Text("Import presets")
+                    }
+                    TextButton({ exporter.launch("hifi-presets.json") }) { Text("Export presets") }
+                }
                 OutlinedTextField(
                     search,
                     { search = it },
@@ -508,10 +649,16 @@ fun EqualizerScreen(vm: PlayerViewModel, profiles: () -> Unit = {}) {
 }
 
 @Composable
-private fun VerticalGain(value: Double, enabled: Boolean, label: String, change: (Double) -> Unit) {
+private fun VerticalGain(
+    value: Double,
+    enabled: Boolean,
+    label: String,
+    change: (Double) -> Unit,
+    height: Dp = 176.dp,
+) {
     val color = MaterialTheme.colorScheme.primary
     Canvas(
-        Modifier.size(64.dp, 200.dp)
+        Modifier.size(56.dp, height)
             .semantics {
                 contentDescription = "$label gain"
                 progressBarRangeInfo = ProgressBarRangeInfo(value.toFloat(), -12f..12f)
@@ -559,13 +706,14 @@ private fun VerticalGain(value: Double, enabled: Boolean, label: String, change:
 fun ResponseGraph(
     settings: DspSettings,
     rate: Int,
+    height: Dp = 192.dp,
     onDrag: ((Int, Double, Double) -> Unit)? = null,
 ) {
     val filters = settings.activeFilters()
     val ceiling = min(20000.0, rate * .49)
-    val coefficients = remember(settings, rate) { filters.map { Biquad.design(it, rate) } }
     val curve =
         remember(settings, rate) {
+            val coefficients = filters.map { Biquad.design(it, rate) }
             val preamp = effectivePreamp(settings, rate)
             (0..200).map { i ->
                 val f = 20.0 * (ceiling / 20).pow(i / 200.0)
@@ -573,17 +721,30 @@ fun ResponseGraph(
                     preamp
             }
         }
-    val color = MaterialTheme.colorScheme.primary
+    val accent = MaterialTheme.colorScheme.primary
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val currentFilters by rememberUpdatedState(filters)
     val currentDrag by rememberUpdatedState(onDrag)
-    Column {
+    val labelSize = with(LocalDensity.current) { 10.sp.toPx() }
+    val paint =
+        remember(labelSize) {
+            android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = labelSize
+                color = android.graphics.Color.rgb(164, 173, 191)
+            }
+        }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
-            "Configured response · ${rate/1000.0} kHz · ${if(settings.enabled)"EQ enabled" else "EQ bypassed"}",
+            if (settings.enabled) "EQ response · applied preamp included"
+            else "EQ bypassed · 0 dB EQ response",
             style = MaterialTheme.typography.labelSmall,
+            color = muted,
         )
         Canvas(
             Modifier.fillMaxWidth()
-                .height(180.dp)
+                .height(height)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surface)
                 .semantics {
                     contentDescription =
                         "Calculated equalizer response, logarithmic 20 Hz to ${ceiling.toInt()} Hz, minus 24 to plus 24 dB"
@@ -591,8 +752,13 @@ fun ResponseGraph(
                 .pointerInput(settings.mode, rate) {
                     if (settings.mode == EqMode.PARAMETRIC && currentDrag != null) {
                         var selected = 0
+                        val left = max(34.dp.toPx(), labelSize * 2.5f)
+                        val right = 12.dp.toPx()
+                        val top = 16.dp.toPx()
+                        val bottom = 26.dp.toPx()
                         detectDragGestures(
                             onDragStart = { p ->
+                                val width = (size.width - left - right).coerceAtLeast(1f)
                                 selected =
                                     currentFilters.indices.minByOrNull { i ->
                                         abs(
@@ -600,73 +766,100 @@ fun ResponseGraph(
                                                     currentFilters[i]
                                                         .frequency
                                                         .coerceIn(20.0, ceiling) / 20
-                                                ) / ln(ceiling / 20) * size.width)
+                                                ) / ln(ceiling / 20) * width + left)
                                                 .toFloat() - p.x
                                         )
                                     } ?: 0
                             }
                         ) { c, _ ->
                             c.consume()
+                            val x =
+                                ((c.position.x - left) /
+                                        (size.width - left - right).coerceAtLeast(1f))
+                                    .coerceIn(0f, 1f)
+                            val y =
+                                ((c.position.y - top) /
+                                        (size.height - top - bottom).coerceAtLeast(1f))
+                                    .coerceIn(0f, 1f)
                             currentDrag?.invoke(
                                 selected,
-                                20.0 *
-                                    (ceiling / 20).pow(
-                                        (c.position.x / size.width).coerceIn(0f, 1f).toDouble()
-                                    ),
+                                20.0 * (ceiling / 20).pow(x.toDouble()),
                                 if (
                                     currentFilters[selected].type in
                                         listOf(FilterType.LOW_PASS, FilterType.HIGH_PASS)
                                 )
                                     0.0
-                                else
-                                    (24 - 48 * c.position.y / size.height)
-                                        .toDouble()
-                                        .coerceIn(-12.0, 12.0),
+                                else (24 - 48 * y).toDouble().coerceIn(-12.0, 12.0),
                             )
                         }
                     }
                 }
         ) {
-            for (i in 0..4) {
-                val y = i * size.height / 4
-                drawLine(Color.DarkGray, Offset(0f, y), Offset(size.width, y), 1f)
+            val left = max(34.dp.toPx(), labelSize * 2.5f)
+            val right = size.width - 12.dp.toPx()
+            val top = 16.dp.toPx()
+            val bottom = size.height - 26.dp.toPx()
+            val width = right - left
+            val height = bottom - top
+            val grid = Color(0xFF303746)
+            for (gain in listOf(24, 12, 0, -12, -24)) {
+                val y = top + (24 - gain) / 48f * height
+                drawLine(
+                    grid.copy(alpha = if (gain == 0) .95f else .5f),
+                    Offset(left, y),
+                    Offset(right, y),
+                    1f,
+                )
+                paint.textAlign = android.graphics.Paint.Align.RIGHT
+                drawContext.canvas.nativeCanvas.drawText(
+                    if (gain > 0) "+$gain" else "$gain",
+                    left - 6.dp.toPx(),
+                    y + labelSize * .35f,
+                    paint,
+                )
             }
-            for (f in listOf(20.0, 100.0, 1000.0, 10000.0)) {
-                if (f < ceiling) {
-                    val x = (ln(f / 20) / ln(ceiling / 20) * size.width).toFloat()
-                    drawLine(Color.DarkGray, Offset(x, 0f), Offset(x, size.height), 1f)
-                }
+            val ticks = listOf(20.0, 100.0, 1000.0, ceiling)
+            ticks.forEachIndexed { i, f ->
+                val x = left + (ln(f / 20) / ln(ceiling / 20) * width).toFloat()
+                drawLine(grid.copy(alpha = .5f), Offset(x, top), Offset(x, bottom), 1f)
+                paint.textAlign =
+                    when (i) {
+                        0 -> android.graphics.Paint.Align.LEFT
+                        ticks.lastIndex -> android.graphics.Paint.Align.RIGHT
+                        else -> android.graphics.Paint.Align.CENTER
+                    }
+                drawContext.canvas.nativeCanvas.drawText(
+                    if (f >= 1000) "${"%.2g".format(java.util.Locale.ROOT, f / 1000)}k"
+                    else f.toInt().toString(),
+                    x,
+                    size.height - 8.dp.toPx(),
+                    paint,
+                )
             }
             val path = Path()
             curve.forEachIndexed { i, g ->
-                val x = i * size.width / 200
-                val y = ((24 - g.coerceIn(-24.0, 24.0)) / 48 * size.height).toFloat()
+                val x = left + i * width / 200
+                val gain = if (settings.enabled) g else 0.0
+                val y = top + ((24 - gain.coerceIn(-24.0, 24.0)) / 48 * height).toFloat()
                 if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
-            drawPath(
-                path,
-                color,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()),
-            )
+            drawPath(path, if (settings.enabled) accent else muted, style = Stroke(2.dp.toPx()))
             if (settings.mode == EqMode.PARAMETRIC)
                 filters.forEach { f ->
                     if (f.enabled && f.frequency < ceiling)
                         drawCircle(
-                            color,
-                            5.dp.toPx(),
+                            accent.copy(alpha = if (settings.enabled) 1f else .35f),
+                            4.dp.toPx(),
                             Offset(
-                                (ln(f.frequency.coerceAtLeast(20.0) / 20) / ln(ceiling / 20) *
-                                        size.width)
-                                    .toFloat(),
-                                ((24 - f.gain) / 48 * size.height).toFloat(),
+                                left +
+                                    (ln(f.frequency.coerceAtLeast(20.0) / 20) / ln(ceiling / 20) *
+                                            width)
+                                        .toFloat(),
+                                top + ((24 - f.gain) / 48 * height).toFloat(),
                             ),
                         )
                 }
         }
-        Text(
-            "20 Hz                     1 kHz                     ${ceiling.toInt()/1000} kHz   •   ±24 dB",
-            style = MaterialTheme.typography.labelSmall,
-        )
     }
 }
 
@@ -699,7 +892,13 @@ fun NumberDialog(title: String, initial: Double, dismiss: () -> Unit, save: (Dou
                 Text("Apply")
             }
         },
-        dismissButton = { TextButton(dismiss) { Text("Cancel") } },
+        dismissButton = {
+            Row {
+                if (!title.contains("Frequency") && !title.startsWith("Q"))
+                    TextButton({ text = "0.0" }) { Text("Zero gain") }
+                TextButton(dismiss) { Text("Cancel") }
+            }
+        },
     )
 }
 

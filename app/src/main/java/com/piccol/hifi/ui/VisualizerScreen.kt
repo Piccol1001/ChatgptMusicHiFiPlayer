@@ -5,6 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.Paint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -40,43 +46,68 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOn
 import kotlin.math.*
 
-private val visualNames=listOf("Spectrum","Oscilloscope","Stereo meters","Spectrogram","Circular","Reactive")
+private val visualNames=listOf("Spectrum","Oscilloscope","Stereo Meter","Spectrogram","Circular","Reactive")
 @OptIn(ExperimentalMaterial3Api::class) @UnstableApi @Composable
-fun VisualizerScreen(vm:PlayerViewModel,fullScreen:Boolean,full:(Boolean)->Unit){
+fun VisualizerScreen(vm:PlayerViewModel,fullScreen:Boolean,optionsRequest:Int=0,browse:()->Unit={},full:(Boolean)->Unit){
     val settings by vm.visualSettings.collectAsStateWithLifecycle()
     val playback by vm.playback.collectAsStateWithLifecycle()
     val analysis=VisualSettings(fftSize=settings.fftSize,bars=settings.bars,fps=settings.fps,logarithmic=settings.logarithmic,smoothing=settings.smoothing,holdMs=settings.holdMs,decay=settings.decay,timeMs=settings.timeMs,quality=settings.quality)
     val frames=remember(vm,analysis){vm.visualization.frames(analysis).flowOn(Dispatchers.Default)}
     val frame by frames.collectAsStateWithLifecycle(initialValue=VisualFrame())
     var options by remember{mutableStateOf(false)}
+    var overlay by remember(fullScreen,playback.item?.mediaId){mutableStateOf(true)}
+    LaunchedEffect(optionsRequest){if(optionsRequest>0)options=true}
+    LaunchedEffect(fullScreen,playback.item?.mediaId){overlay=true;if(fullScreen){delay(3000);overlay=false}}
     val context=LocalContext.current
     BackHandler(fullScreen){full(false)}
     DisposableEffect(fullScreen){val window=(context as? Activity)?.window;val controller=window?.let{WindowCompat.getInsetsController(it,it.decorView)}
         if(fullScreen){controller?.systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE;controller?.hide(WindowInsetsCompat.Type.systemBars())}
         onDispose{controller?.show(WindowInsetsCompat.Type.systemBars())}}
-    if(fullScreen)Box(Modifier.fillMaxSize().background(Color.Black)){
-        VisualDisplay(settings,frame,playback.item?.mediaMetadata?.artworkUri?.toString(),Modifier.fillMaxSize())
-        FilledTonalIconButton({full(false)},Modifier.align(Alignment.TopEnd).padding(16.dp)){Icon(Icons.Rounded.FullscreenExit,"Exit fullscreen")}
-    }else LazyColumn(contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-        item{Box(Modifier.fillMaxWidth().height(280.dp).clip(MaterialTheme.shapes.large).background(Color.Black)){
-            VisualDisplay(settings,frame,playback.item?.mediaMetadata?.artworkUri?.toString(),Modifier.fillMaxSize())
-            IconButton({full(true)},Modifier.align(Alignment.TopEnd)){Icon(Icons.Rounded.Fullscreen,"Fullscreen visualizer",tint=Color.White)}
-        }}
-        item{Text(if(frame.playing)"${visualNames[settings.mode.ordinal]} · ${frame.rate/settings.fftSize} Hz/bin · target ${settings.fps} FPS"else "Play local music to visualize its audio",style=MaterialTheme.typography.labelSmall)}
-        item{Column{for(row in 0..1)Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly){for(column in 0..2){val index=row*3+column;val mode=VisualMode.entries[index]
-            Column(horizontalAlignment=Alignment.CenterHorizontally,modifier=Modifier.weight(1f)){
-                FilledIconToggleButton(settings.mode==mode,{vm.changeVisual{it.copy(mode=mode)}}){Icon(when(mode){VisualMode.SPECTRUM->Icons.Rounded.BarChart;VisualMode.SCOPE->Icons.Rounded.Waves;VisualMode.METERS->Icons.Rounded.GraphicEq;VisualMode.SPECTROGRAM->Icons.Rounded.Gradient;VisualMode.CIRCULAR->Icons.Rounded.DonutLarge;VisualMode.REACTIVE->Icons.Rounded.AutoAwesome},visualNames[index])}
-                Text(visualNames[index],style=MaterialTheme.typography.labelSmall)
+    val cover=playback.item?.mediaMetadata?.artworkUri?.toString()
+    val plot:@Composable (Modifier)->Unit={modifier->
+        Box(modifier.clip(MaterialTheme.shapes.large).background(Color.Black)) {
+            if(playback.playing)VisualDisplay(settings,frame,cover,Modifier.fillMaxSize())
+            else MusicEmptyState("Play music to start visualizing","Real audio analysis appears here during playback.","Browse Music",browse,Icons.Rounded.GraphicEq,Modifier.align(Alignment.Center))
+            if(playback.playing&&overlay)Surface(color=Color.Black.copy(alpha=.65f),shape=MaterialTheme.shapes.small,modifier=Modifier.align(Alignment.BottomStart).padding(12.dp)) {
+                Column(Modifier.padding(horizontal=10.dp,vertical=8.dp).widthIn(max=240.dp)) {
+                    Text(playback.item?.mediaMetadata?.title?.toString().orEmpty(),style=MaterialTheme.typography.titleSmall,maxLines=1,overflow=TextOverflow.Ellipsis,color=Color.White)
+                    Text(playback.item?.mediaMetadata?.artist?.toString().orEmpty(),style=MaterialTheme.typography.bodySmall,maxLines=1,overflow=TextOverflow.Ellipsis,color=Color(0xFFA4ADBF))
+                }
             }
-        }}}}
-        item{Row{FilledTonalButton({options=true}){Icon(Icons.Rounded.Settings,null);Spacer(Modifier.width(8.dp));Text("Visualizer settings")};TextButton({vm.changeVisual{it.copy(theme=(it.theme+1)%3)}}){Text("Colors")}}}
-        if(settings.mode==VisualMode.REACTIVE)item{Text("Original audio-reactive shaders · not projectM",style=MaterialTheme.typography.labelSmall)
-            Row{listOf("Flow","Orbit","Prism").forEachIndexed{i,name->FilterChip(settings.effect==i,{vm.changeVisual{it.copy(effect=i)}},label={Text(name)})}}}
-        if(settings.mode==VisualMode.METERS)item{Text("RMS: 300 ms smoothing. Peak: instantaneous digital peak with hold/decay. dBFS refers to app PCM, not acoustic loudness.",style=MaterialTheme.typography.bodySmall)}
-        item{Text("Analysis runs only while this screen is visible and playback is active. The tap monitors post-DSP PCM before Android output volume/routing. Multichannel displays monitor the front pair.",style=MaterialTheme.typography.bodySmall)}
+        }
+    }
+    if(fullScreen)Box(Modifier.fillMaxSize().background(Color.Black)) {
+        if(playback.playing)plot(Modifier.fillMaxSize()) else MusicEmptyState("Play music to start visualizing","Choose local music to see its audio.","Browse Music",browse,Icons.Rounded.GraphicEq,Modifier.align(Alignment.Center))
+        FilledTonalIconButton({full(false)},Modifier.align(Alignment.TopEnd).padding(16.dp)){Icon(Icons.Rounded.FullscreenExit,"Exit fullscreen")}
+    }else BoxWithConstraints(Modifier.fillMaxSize()) {
+        val displayHeight=(maxHeight-128.dp).coerceIn(180.dp,640.dp)
+        LazyColumn(contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            item {
+                if(playback.playing)plot(Modifier.fillMaxWidth().height(displayHeight))
+                else Surface(color=MaterialTheme.colorScheme.surface,shape=MaterialTheme.shapes.large) {
+                    MusicEmptyState("Play music to start visualizing","Six views of your music. No microphone, no simulated signal.","Browse Music",browse,Icons.Rounded.GraphicEq)
+                }
+            }
+            item {
+                LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    items(VisualMode.entries){mode->CompactTab(visualNames[mode.ordinal],settings.mode==mode,{vm.changeVisual{it.copy(mode=mode)}},
+                        icon=when(mode){VisualMode.SPECTRUM->Icons.Rounded.BarChart;VisualMode.SCOPE->Icons.Rounded.Waves;VisualMode.METERS->Icons.Rounded.GraphicEq;VisualMode.SPECTROGRAM->Icons.Rounded.Gradient;VisualMode.CIRCULAR->Icons.Rounded.DonutLarge;VisualMode.REACTIVE->Icons.Rounded.AutoAwesome},
+                        modifier=Modifier.semantics{contentDescription=visualNames[mode.ordinal]})}
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly) {
+                    TextButton({full(true)}){Icon(Icons.Rounded.Fullscreen,null,Modifier.size(18.dp));Text("Full Screen")}
+                    IconButton({options=true}){Icon(Icons.Rounded.Tune,"Visualizer settings")}
+                    TextButton({vm.changeVisual{it.copy(theme=(it.theme+1)%3)}}){Icon(Icons.Rounded.Palette,null,Modifier.size(18.dp));Text("Color Theme")}
+                }
+            }
+            if(settings.mode==VisualMode.REACTIVE)item {Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Flow","Orbit","Prism").forEachIndexed{i,name->CompactTab(name,settings.effect==i,{vm.changeVisual{it.copy(effect=i)}})}}}
+        }
     }
     if(options)ModalBottomSheet({options=false}){LazyColumn(Modifier.heightIn(max=600.dp),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
         item{Text("Visualization",style=MaterialTheme.typography.titleLarge)}
+        item{var details by remember{mutableStateOf(false)};TextButton({details=!details}){Text("Technical details")};if(details)Text("Post-DSP PCM before Android volume/routing. Analysis suspends when hidden or paused; multichannel displays monitor the front pair. FFT ${settings.fftSize} · target ${settings.fps} FPS. RMS smoothing 300 ms; digital peak is not true peak or acoustic SPL. Reactive effects are original ES 2.0 shaders, not projectM.",style=MaterialTheme.typography.bodySmall)}
         item{ChoiceRow("Target FPS",listOf(30,60),settings.fps,{it.toString()}){v->vm.changeVisual{it.copy(fps=v)}}}
         item{ChoiceRow("Quality",VisualQuality.entries.toList(),settings.quality,{it.name}){v->vm.changeVisual{it.copy(quality=v)}}}
         item{ChoiceRow("FFT size",listOf(512,1024,2048,4096,8192),settings.fftSize,{it.toString()}){v->vm.changeVisual{it.copy(fftSize=v)}}}

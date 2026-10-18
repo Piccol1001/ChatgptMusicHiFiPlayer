@@ -420,6 +420,27 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun technical(value: Boolean) = task { preferences.technical(value) }
 
+    fun appearance(
+        amoled: Boolean? = null,
+        artworkColor: Boolean? = null,
+        gradient: Boolean? = null,
+        corners: Int? = null,
+    ) = task { preferences.appearance(amoled, artworkColor, gradient, corners) }
+
+    val libraryGroups =
+        filter
+            .map { it.category }
+            .distinctUntilChanged()
+            .flatMapLatest {
+                if (
+                    it in
+                        listOf(Category.ALBUMS, Category.ARTISTS, Category.GENRES, Category.FOLDERS)
+                )
+                    dao.groupCards(it.name)
+                else flowOf(emptyList())
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun accent(value: Int) = task { preferences.accent(value) }
 
     fun clearHistory() = task { dao.clearHistory() }

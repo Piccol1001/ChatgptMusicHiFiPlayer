@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "applicationId": "com.piccol.hifi",
+  "updateCertificateSha256": "322612b8f4ffae7f3e47ac07f9f4357e1944ecc8c4c71a1ee0cbfd013a2d2428",
+  "releases": [
+    {
+      "versionName": "0.1.0",
+      "versionCode": 1,
+      "releaseDate": "2026-10-16",
+      "dateEvidence": "First repository publication, Git commit fbe4bb44e4854610806d45bf68191ecd1f70ba7a; UTC commit date, original APK build date not established.",
+      "artifacts": [
+        {
+          "path": "artifacts/apk/HiFiPlayer-0.1.0-debug.apk",
+          "gitCommit": "fbe4bb44e4854610806d45bf68191ecd1f70ba7a",
+          "sha256": "da14366d39b5ffbd27425071f3f243700085cafeaff2b9e8e69c369edfde228a",
+          "signing": "debug-signed",
+          "certificateSha256": "322612b8f4ffae7f3e47ac07f9f4357e1944ecc8c4c71a1ee0cbfd013a2d2428"
+        },
+        {
+          "path": "artifacts/apk/HiFiPlayer-0.1.0-release-unsigned.apk",
+          "gitCommit": "fbe4bb44e4854610806d45bf68191ecd1f70ba7a",
+          "sha256": "87663db48fbb7cc45ef9bbd1b3101aa8a1fb798f733907f9ceb7f304a602b8b9",
+          "signing": "unsigned",
+          "certificateSha256": null
+        }
+      ]
+    },
+    {
+      "versionName": "0.5.0",
+      "versionCode": 5,
+      "releaseDate": "2026-10-17",
+      "dateEvidence": "First repository publication, Git commit acb63a974dd936237471da9870285a8bb57146fc; UTC commit date, original APK build date not established.",
+      "artifacts": [
+        {
+          "path": "artifacts/apk/HiFiPlayer-0.5.0-debug.apk",
+          "gitCommit": "acb63a974dd936237471da9870285a8bb57146fc",
+          "sha256": "84539e7f1ae280693b0096fa314672a8bb8618ac3288d1be603ab9e5c0de1034",
+          "signing": "debug-signed",
+          "certificateSha256": "322612b8f4ffae7f3e47ac07f9f4357e1944ecc8c4c71a1ee0cbfd013a2d2428"
+        },
+        {
+          "path": "artifacts/apk/HiFiPlayer-0.5.0-release-unsigned.apk",
+          "gitCommit": "acb63a974dd936237471da9870285a8bb57146fc",
+          "sha256": "61a890d41ca88df2b0c15f3668ec66267544dba41896dc6d8e34a1b4eb3d1655",
+          "signing": "unsigned",
+          "certificateSha256": null
+        }
+      ]
+    }
+  ]
+}

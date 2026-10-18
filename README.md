@@ -4,16 +4,24 @@ A native, offline Android music player built with Kotlin, Compose Material 3, Me
 
 ## APKs and build
 
+Release metadata is managed through [the verified release workflow](docs/RELEASE_WORKFLOW.md), with [changelog](CHANGELOG.md) and [historical APK inventory](RELEASES.md). `version.properties` changes only after successful verified release packaging. Settings → About → App Version reads the installed APK metadata.
+
 Current evaluation artifacts and SHA-256 checksums are in [artifacts/apk](artifacts/apk/README.md). Install the **debug APK**. The release APK is unsigned and needs an owner's release signing configuration. Signing keys and credentials are not committed.
 
 ```sh
 ./gradlew assembleDebug testDebugUnitTest lintDebug assembleRelease
-./gradlew connectedDebugAndroidTest # connected Android device/emulator required
+./gradlew connectedDebugAndroidTest # disposable Android test target only
 ```
+
+Connected test runners can uninstall their target APK. Use the separate validation emulator, never an installation containing user data; see [native test instructions](TESTING.md).
 
 Use JDK 17 or 21, Android SDK Platform 36 and Build Tools 35.0.0. Minimum Android is 8.0 / API 26; compile/target SDK is 36. Gradle 8.13, AGP 8.13.2 and Kotlin 2.2.21 are pinned. Set `ANDROID_HOME` or an untracked `local.properties`. Generated APKs are under `app/build/outputs/apk/`.
 
 In this prepared Codex environment, first run `source /workspace/.tooling/env.sh`. Toolchains and caches are outside the checkout. This is an Android application: there is no web server, backend, account or API key to start.
+
+## Redesigned interface
+
+Compact browsing, album/playlist cards, folder hierarchy, an artwork-led player, a persistent mini-player, focused EQ/visualizer controls and grouped Settings preserve the existing playback service. Appearance offers black/dark-gray backgrounds, local artwork accents and artwork shape/gradient controls. See the [redesign report and screenshots](docs/UI_REDESIGN.md).
 
 ## Use
 
@@ -54,4 +62,4 @@ FLAC transition frame totals and AudioTrack reuse were verified. Sample-exact MP
 
 No Internet, microphone or all-files permission; no accounts, ads, analytics or cloud dependency. Backups/device transfer are excluded. Settings includes selectable offline dependency licenses; the [runtime inventory](docs/DEPENDENCIES.md) and [notices](THIRD_PARTY_NOTICES.md) are included in the repository. Imports and settings stay local. The app uses scoped read access and explicitly selected export destinations.
 
-Physical Bluetooth/USB/headphone removal, incoming calls, launcher variants, battery/thermal behavior and prolonged listening remain device acceptance work. Software-emulator cold-start ANRs/slow frames were observed; physical startup performance is not certified. Album-derived accents, portable M3U paths, crossfade and CUE remain unavailable. The original scope is preserved in [requirements](docs/PRODUCT_REQUIREMENTS.md) and the [remaining-phase prompt](docs/REMAINING_PHASES_REQUIREMENTS.md).
+Physical Bluetooth/USB/headphone removal, incoming calls, launcher variants, battery/thermal behavior and prolonged listening remain device acceptance work. Software-emulator cold-start ANRs/slow frames were observed; physical startup performance is not certified. Local artwork-derived accents are available under Appearance. Portable M3U paths, crossfade and CUE remain unavailable. The original scope is preserved in [requirements](docs/PRODUCT_REQUIREMENTS.md) and the [remaining-phase prompt](docs/REMAINING_PHASES_REQUIREMENTS.md).

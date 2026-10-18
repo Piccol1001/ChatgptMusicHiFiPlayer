@@ -49,7 +49,20 @@ data class Playlist(@PrimaryKey(autoGenerate = true) val id: Long = 0, val name:
 )
 data class PlaylistEntry(val playlistId: Long, val uri: String, val position: Int)
 
-data class PlaylistSummary(val id: Long, val name: String, val count: Int, val duration: Long)
+data class PlaylistSummary(
+    val id: Long,
+    val name: String,
+    val count: Int,
+    val duration: Long,
+    val artwork: String? = null,
+)
+
+data class LibraryGroup(
+    val name: String,
+    val subtitle: String,
+    val artwork: String?,
+    val count: Int,
+)
 
 @Dao
 abstract class MusicDao {
@@ -72,6 +85,13 @@ abstract class MusicDao {
         markUnavailable(source)
         upsert(tracks)
     }
+
+    @Query(
+        """SELECT CASE :category WHEN 'ALBUMS' THEN album WHEN 'ARTISTS' THEN artist WHEN 'GENRES' THEN genre ELSE folder END AS name,
+        MIN(artist) AS subtitle, MIN(artwork) AS artwork, COUNT(*) AS count FROM tracks WHERE available=1
+        GROUP BY CASE :category WHEN 'ALBUMS' THEN album WHEN 'ARTISTS' THEN artist WHEN 'GENRES' THEN genre ELSE folder END ORDER BY name COLLATE NOCASE"""
+    )
+    abstract fun groupCards(category: String): Flow<List<LibraryGroup>>
 
     @Query("SELECT uri FROM favorites") abstract fun favorites(): Flow<List<String>>
 
@@ -106,7 +126,7 @@ abstract class MusicDao {
     abstract fun folders(): Flow<List<String>>
 
     @Query(
-        "SELECT p.id,p.name,COUNT(t.uri) AS count,COALESCE(SUM(t.duration),0) AS duration FROM playlists p LEFT JOIN playlist_entries e ON p.id=e.playlistId LEFT JOIN tracks t ON t.uri=e.uri GROUP BY p.id ORDER BY p.name COLLATE NOCASE"
+        "SELECT p.id,p.name,COUNT(t.uri) AS count,COALESCE(SUM(t.duration),0) AS duration, MIN(t.artwork) AS artwork FROM playlists p LEFT JOIN playlist_entries e ON p.id=e.playlistId LEFT JOIN tracks t ON t.uri=e.uri GROUP BY p.id ORDER BY p.name COLLATE NOCASE"
     )
     abstract fun playlists(): Flow<List<PlaylistSummary>>
 

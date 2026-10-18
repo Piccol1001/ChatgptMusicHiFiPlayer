@@ -3,7 +3,7 @@ package com.piccol.hifi.data
 import androidx.sqlite.db.SimpleSQLiteQuery
 
 enum class Category(val label: String) {
-    ALL("All songs"),
+    ALL("Songs"),
     ALBUMS("Albums"),
     ARTISTS("Artists"),
     GENRES("Genres"),

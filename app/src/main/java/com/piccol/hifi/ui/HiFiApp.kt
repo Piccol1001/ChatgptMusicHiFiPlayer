@@ -8,11 +8,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,13 +25,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,9 +51,9 @@ import com.piccol.hifi.data.*
 import com.piccol.hifi.library.readLimited
 import kotlinx.coroutines.*
 
-private val Ink = Color(0xFF080B12)
-private val Surface = Color(0xFF121926)
-private val Muted = Color(0xFF98A7BD)
+private val Ink = Color(0xFF080A0F)
+private val Surface = Color(0xFF151922)
+private val Muted = Color(0xFFA4ADBF)
 private val accents = listOf(Color(0xFF58A6FF), Color(0xFF7BE0C3), Color(0xFFCCA3FF))
 
 private enum class Screen(val label: String, val icon: ImageVector) {
@@ -64,6 +72,20 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
     val playback by vm.playback.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val eqState by vm.dspSettings.collectAsStateWithLifecycle()
+    var searchRequest by remember { mutableIntStateOf(0) }
+    var createRequest by remember { mutableIntStateOf(0) }
+    var importRequest by remember { mutableIntStateOf(0) }
+    var presetRequest by remember { mutableIntStateOf(0) }
+    var visualOptionsRequest by remember { mutableIntStateOf(0) }
+    var settingsPage by rememberSaveable { mutableStateOf<String?>(null) }
+    val accent =
+        artworkAccent(
+            playback.item?.mediaMetadata?.artworkUri?.toString(),
+            settings.artworkColor,
+            accents[settings.accent.coerceIn(0, 2)],
+        )
+    val background = if (settings.amoled) Color.Black else Color(0xFF171B23)
     var screen by rememberSaveable { mutableStateOf(Screen.LIBRARY) }
     var visualFullScreen by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
@@ -80,17 +102,27 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
             onPlayerOpened()
         }
     }
-    BackHandler(showSettings) { showSettings = false }
+    BackHandler(showSettings) {
+        if (settingsPage != null) settingsPage = null else showSettings = false
+    }
     val snackbar = remember { SnackbarHostState() }
     val colors =
         darkColorScheme(
-            primary = accents[settings.accent.coerceIn(0, 2)],
-            background = Ink,
+            primary = accent,
+            onPrimary = Color(0xFF07111E),
+            background = background,
             surface = Surface,
             surfaceContainer = Surface,
-            onSurface = Color(0xFFE8EEF8),
-            onBackground = Color(0xFFE8EEF8),
+            onSurface = Color(0xFFF4F6FA),
+            onSurfaceVariant = Muted,
+            error = Color(0xFFFF6B6B),
+            onBackground = Color(0xFFF4F6FA),
             secondary = Muted,
+            secondaryContainer = Color(0xFF202633),
+            onSecondaryContainer = Color(0xFFF4F6FA),
+            surfaceVariant = Color(0xFF202633),
+            surfaceContainerHigh = Color(0xFF202633),
+            outline = Color(0xFF333D4E),
         )
     val musicAccess =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -119,76 +151,158 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
             vm.message.value = null
         }
     }
-    MaterialTheme(colorScheme = colors) {
+    MaterialTheme(colorScheme = colors, typography = PlayerTypography) {
         Scaffold(
-            containerColor = Ink,
+            modifier = Modifier.imePadding(),
+            containerColor = background,
             snackbarHost = { SnackbarHost(snackbar) },
+            contentWindowInsets =
+                if (visualFullScreen) WindowInsets(0, 0, 0, 0)
+                else WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
             topBar = {
-                if (!visualFullScreen) {
-                    TopAppBar(
-                        title = {
-                            Column {
-                                Text(
-                                    if (showSettings) "Settings"
-                                    else if (screen == Screen.PLAYER) "Now playing"
-                                    else screen.label,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Text(
-                                    "HiFi Player · on your device",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Muted,
+                if (!visualFullScreen)
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(background)
+                            .statusBarsPadding()
+                            .heightIn(min = 60.dp)
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (showSettings || screen == Screen.PLAYER)
+                            IconButton({
+                                if (showSettings) {
+                                    if (settingsPage != null) settingsPage = null
+                                    else showSettings = false
+                                } else screen = Screen.LIBRARY
+                            }) {
+                                Icon(
+                                    Icons.Rounded.KeyboardArrowDown,
+                                    if (showSettings) "Back" else "Minimize player",
                                 )
                             }
-                        },
-                        navigationIcon = {
-                            if (showSettings)
-                                IconButton(onClick = { showSettings = false }) {
-                                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back")
+                        Text(
+                            if (showSettings) settingsPage ?: "Settings"
+                            else if (screen == Screen.PLAYER) "Now Playing" else screen.label,
+                            Modifier.weight(1f).padding(start = 8.dp),
+                            style =
+                                if (showSettings && settingsPage != null)
+                                    MaterialTheme.typography.titleLarge
+                                else MaterialTheme.typography.headlineMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (!showSettings) {
+                            when (screen) {
+                                Screen.LIBRARY -> {
+                                    IconButton({ searchRequest++ }) {
+                                        Icon(Icons.Rounded.Search, "Search library")
+                                    }
+                                    IconButton(vm::refresh) {
+                                        Icon(Icons.Rounded.Refresh, "Rescan library")
+                                    }
                                 }
-                        },
-                        actions = {
-                            IconButton(onClick = { vm.refresh() }) {
-                                Icon(Icons.Rounded.Refresh, "Refresh music library")
-                            }
-                            IconButton(onClick = { showSettings = !showSettings }) {
-                                Icon(Icons.Rounded.Settings, "Settings")
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Ink),
-                    )
-                }
-            },
-            bottomBar = {
-                if (!visualFullScreen) {
-                    Column {
-                        if (playback.item != null && screen != Screen.PLAYER && !showSettings)
-                            MiniPlayer(playback, { screen = Screen.PLAYER }, vm::toggle, vm::next)
-                        NavigationBar(containerColor = Ink, tonalElevation = 0.dp) {
-                            Screen.entries.forEach { destination ->
-                                NavigationBarItem(
-                                    selected = screen == destination && !showSettings,
-                                    onClick = {
-                                        screen = destination
-                                        showSettings = false
-                                        visualFullScreen = false
-                                    },
-                                    icon = { Icon(destination.icon, destination.label) },
-                                    label = {
-                                        Text(
-                                            destination.label,
-                                            maxLines = 1,
-                                            style = MaterialTheme.typography.labelSmall,
+                                Screen.PLAYLISTS -> {
+                                    IconButton({ createRequest++ }) {
+                                        Icon(Icons.Rounded.Add, "Create playlist")
+                                    }
+                                    IconButton({ importRequest++ }) {
+                                        Icon(Icons.Rounded.FileOpen, "Import playlist")
+                                    }
+                                }
+                                Screen.PLAYER ->
+                                    IconButton({ queue = true }) {
+                                        Icon(
+                                            Icons.AutoMirrored.Rounded.QueueMusic,
+                                            "Playback queue",
                                         )
-                                    },
-                                )
+                                    }
+                                Screen.EQ -> {
+                                    Switch(
+                                        eqState.enabled,
+                                        { enabled -> vm.changeDsp { it.copy(enabled = enabled) } },
+                                        Modifier.semantics {
+                                            contentDescription = "Equalizer enabled"
+                                        },
+                                    )
+                                    IconButton({ presetRequest++ }) {
+                                        Icon(Icons.Rounded.LibraryMusic, "Choose EQ preset")
+                                    }
+                                }
+                                Screen.VISUALIZER -> {
+                                    IconButton({ visualFullScreen = true }) {
+                                        Icon(Icons.Rounded.Fullscreen, "Fullscreen visualizer")
+                                    }
+                                    IconButton({ visualOptionsRequest++ }) {
+                                        Icon(Icons.Rounded.Tune, "Visualization settings")
+                                    }
+                                }
+                            }
+                            IconButton({
+                                showSettings = true
+                                settingsPage = null
+                            }) {
+                                Icon(Icons.Rounded.Settings, "Settings")
                             }
                         }
                     }
-                }
+            },
+            bottomBar = {
+                if (!visualFullScreen && !showSettings)
+                    Column(Modifier.background(background).navigationBarsPadding()) {
+                        if (playback.item != null && screen != Screen.PLAYER)
+                            MiniPlayer(playback, { screen = Screen.PLAYER }, vm::toggle, vm::next)
+                        HorizontalDivider(color = Color.White.copy(alpha = .06f))
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp)
+                        ) {
+                            Screen.entries.forEach { destination ->
+                                val active = screen == destination
+                                Column(
+                                    Modifier.weight(1f)
+                                        .selectable(active, role = Role.Tab) {
+                                            screen = destination
+                                            showSettings = false
+                                            visualFullScreen = false
+                                        }
+                                        .semantics {
+                                            contentDescription = "Open ${destination.label}"
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Icon(
+                                        destination.icon,
+                                        null,
+                                        Modifier.size(23.dp),
+                                        tint = if (active) accent else Muted,
+                                    )
+                                    Text(
+                                        destination.label,
+                                        modifier =
+                                            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        fontSize = 10.sp,
+                                        lineHeight = 14.sp,
+                                        fontWeight =
+                                            if (active) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (active) accent else Muted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
             },
         ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            Box(
+                Modifier.fillMaxSize()
+                    .padding(padding)
+                    .imePadding()
+                    .then(if (showSettings) Modifier.navigationBarsPadding() else Modifier)
+            ) {
                 if (showSettings)
                     SettingsScreen(
                         vm,
@@ -199,6 +313,16 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
                         },
                         { profiles = true },
                         { output = true },
+                        settingsPage,
+                        { settingsPage = it },
+                        {
+                            showSettings = false
+                            screen = Screen.EQ
+                        },
+                        {
+                            showSettings = false
+                            screen = Screen.VISUALIZER
+                        },
                     )
                 else
                     when (screen) {
@@ -213,8 +337,15 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
                                     )
                                 },
                                 { folderPicker.launch(null) },
+                                searchRequest,
                             )
-                        Screen.PLAYLISTS -> PlaylistsScreen(vm, { screen = Screen.LIBRARY })
+                        Screen.PLAYLISTS ->
+                            PlaylistsScreen(
+                                vm,
+                                { screen = Screen.LIBRARY },
+                                createRequest,
+                                importRequest,
+                            )
                         Screen.PLAYER ->
                             NowPlaying(
                                 vm,
@@ -225,10 +356,21 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
                                 { lyrics = true },
                                 { screen = Screen.EQ },
                                 { screen = Screen.VISUALIZER },
+                                { screen = Screen.LIBRARY },
                             )
-                        Screen.EQ -> EqualizerScreen(vm) { profiles = true }
+                        Screen.EQ -> EqualizerScreen(vm, presetRequest) { profiles = true }
                         Screen.VISUALIZER ->
-                            VisualizerScreen(vm, visualFullScreen) { visualFullScreen = it }
+                            VisualizerScreen(
+                                vm,
+                                visualFullScreen,
+                                visualOptionsRequest,
+                                {
+                                    visualFullScreen = false
+                                    screen = Screen.LIBRARY
+                                },
+                            ) {
+                                visualFullScreen = it
+                            }
                     }
             }
         }
@@ -265,199 +407,357 @@ private fun LibraryScreen(
     vm: PlayerViewModel,
     requestAccess: () -> Unit,
     chooseFolder: () -> Unit,
+    searchRequest: Int = 0,
 ) {
     val filter by vm.filter.collectAsStateWithLifecycle()
-    val groups by vm.groups.collectAsStateWithLifecycle()
+    val groups by vm.libraryGroups.collectAsStateWithLifecycle()
     val favorites by vm.favorites.collectAsStateWithLifecycle()
+    val folders by vm.folders.collectAsStateWithLifecycle()
     val scan by vm.scanner.state.collectAsStateWithLifecycle()
     val tracks = vm.tracks.collectAsLazyPagingItems()
-    Column(Modifier.fillMaxSize()) {
-        if (!vm.scanner.hasMediaPermission()) {
-            Card(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Bring your music with you", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Allow music access or select a folder. Your files stay on your device.",
-                        color = Muted,
-                        style = MaterialTheme.typography.bodySmall,
+    val libraryState = rememberLazyGridState()
+    val focus = remember { FocusRequester() }
+    var folderPrefix by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(filter.category) { folderPrefix = "" }
+    LaunchedEffect(searchRequest) {
+        if (searchRequest > 0) {
+            libraryState.scrollToItem(0)
+            withFrameNanos {}
+            focus.requestFocus()
+        }
+    }
+    val grouping =
+        filter.category in
+            listOf(Category.ALBUMS, Category.ARTISTS, Category.GENRES, Category.FOLDERS) &&
+            filter.group == null &&
+            filter.playlist == null &&
+            filter.smart == null &&
+            filter.search.isBlank()
+    val albums = grouping && filter.category == Category.ALBUMS
+    val folderNodes = remember(groups, folderPrefix) { folderChildren(groups, folderPrefix) }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(if (albums) 2 else 1),
+        state = libraryState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            TextField(
+                filter.search,
+                { vm.filter.value = filter.copy(search = it) },
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .focusRequester(focus),
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                placeholder = { Text("Songs, artists, albums") },
+                trailingIcon = {
+                    if (filter.search.isNotEmpty())
+                        IconButton({ vm.filter.value = filter.copy(search = "") }) {
+                            Icon(Icons.Rounded.Close, "Clear search")
+                        }
+                },
+                shape = RoundedCornerShape(14.dp),
+                colors =
+                    TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    ),
+            )
+        }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            androidx.compose.foundation.lazy.LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(Category.entries) { c ->
+                    CompactTab(
+                        c.label,
+                        filter.category == c && filter.playlist == null && filter.smart == null,
+                        {
+                            vm.filter.value =
+                                filter.copy(
+                                    category = c,
+                                    group = null,
+                                    playlist = null,
+                                    smart = null,
+                                    smartId = null,
+                                )
+                        },
                     )
-                    Row {
-                        TextButton(onClick = requestAccess) { Text("Allow music") }
-                        TextButton(onClick = chooseFolder) { Text("Choose folder") }
-                    }
                 }
             }
         }
-        OutlinedTextField(
-            value = filter.search,
-            onValueChange = { vm.filter.value = filter.copy(search = it) },
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Rounded.Search, null) },
-            placeholder = { Text("Songs, artists, albums") },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(18.dp),
-            trailingIcon = {
-                if (filter.search.isNotEmpty())
-                    IconButton(onClick = { vm.filter.value = filter.copy(search = "") }) {
-                        Icon(Icons.Rounded.Close, "Clear search")
+        if (!vm.scanner.hasMediaPermission() && folders.isEmpty())
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Text(
+                        "Your music stays on your device",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(requestAccess) { Text("Grant Music Access") }
+                        TextButton(
+                            chooseFolder,
+                            colors = ButtonDefaults.textButtonColors(contentColor = Muted),
+                        ) {
+                            Text("Choose Folder")
+                        }
                     }
-            },
-        )
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Category.entries.forEach { category ->
-                FilterChip(
-                    selected =
-                        filter.category == category &&
-                            filter.playlist == null &&
-                            filter.smart == null,
-                    onClick = {
-                        vm.filter.value =
-                            filter.copy(
-                                category = category,
-                                group = null,
-                                playlist = null,
-                                smart = null,
-                                smartId = null,
-                            )
-                    },
-                    label = { Text(category.label) },
-                )
+                }
             }
-        }
-        if (filter.playlist != null || filter.group != null || filter.smart != null)
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Row(
-                Modifier.padding(horizontal = 16.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    filter.group
-                        ?: if (filter.smart != null) "Smart playlist · matching songs"
-                        else "Playlist songs",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                TextButton(
-                    onClick = {
+                if (filter.group != null || filter.playlist != null || filter.smart != null) {
+                    IconButton({
                         vm.filter.value =
                             filter.copy(group = null, playlist = null, smart = null, smartId = null)
+                    }) {
+                        Icon(Icons.Rounded.ArrowBack, "Back to collection")
                     }
-                ) {
-                    Text("Clear")
-                }
-            }
-        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            var sortMenu by remember { mutableStateOf(false) }
-            var formatMenu by remember { mutableStateOf(false) }
-            Box {
-                TextButton(onClick = { sortMenu = true }) {
-                    Icon(Icons.AutoMirrored.Rounded.Sort, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(filter.sort.label)
-                }
-                DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                    Sort.entries.forEach { sort ->
-                        DropdownMenuItem(
-                            text = { Text(sort.label) },
-                            onClick = {
-                                vm.filter.value = filter.copy(sort = sort)
-                                sortMenu = false
-                            },
-                        )
-                    }
-                }
-            }
-            Box {
-                TextButton(onClick = { formatMenu = true }) {
-                    Text(filter.format.ifBlank { "All formats" })
-                }
-                DropdownMenu(expanded = formatMenu, onDismissRequest = { formatMenu = false }) {
-                    listOf(
-                            "" to "All formats",
-                            "mpeg" to "MP3",
-                            "flac" to "FLAC",
-                            "wav" to "WAV",
-                            "mp4" to "M4A",
-                            "ogg" to "OGG",
-                            "opus" to "Opus",
-                        )
-                        .forEach { (value, name) ->
-                            DropdownMenuItem(
-                                text = { Text(name) },
-                                onClick = {
-                                    vm.filter.value = filter.copy(format = value)
-                                    formatMenu = false
-                                },
-                            )
+                    Text(
+                        filter.group?.substringAfterLast('/')?.ifBlank { filter.group!! }
+                            ?: if (filter.smart != null) "Smart collection" else "Playlist",
+                        Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else {
+                    var sort by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(
+                            { sort = true },
+                            colors = ButtonDefaults.textButtonColors(contentColor = Muted),
+                        ) {
+                            Icon(Icons.AutoMirrored.Rounded.Sort, null, Modifier.size(18.dp))
+                            Text(filter.sort.label)
                         }
+                        DropdownMenu(sort, { sort = false }) {
+                            Sort.entries.forEach { order ->
+                                DropdownMenuItem(
+                                    text = { Text(order.label) },
+                                    onClick = {
+                                        vm.filter.value = filter.copy(sort = order)
+                                        sort = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    var format by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(
+                            { format = true },
+                            colors = ButtonDefaults.textButtonColors(contentColor = Muted),
+                        ) {
+                            Text(filter.format.ifBlank { "All formats" })
+                        }
+                        DropdownMenu(format, { format = false }) {
+                            listOf(
+                                    "" to "All formats",
+                                    "mpeg" to "MP3",
+                                    "flac" to "FLAC",
+                                    "wav" to "WAV",
+                                    "mp4" to "M4A",
+                                    "ogg" to "OGG",
+                                    "opus" to "Opus",
+                                )
+                                .forEach { (key, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            vm.filter.value = filter.copy(format = key)
+                                            format = false
+                                        },
+                                    )
+                                }
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
                 }
-            }
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = vm::playAll) {
-                Icon(Icons.Rounded.PlayCircle, "Play up to 1,000 matching songs")
-            }
-        }
-        if (scan.running) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (scan.message.isNotEmpty())
-            Text(
-                scan.message,
-                Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = Muted,
-            )
-        if (
-            groups.isNotEmpty() &&
-                filter.group == null &&
-                filter.playlist == null &&
-                filter.smart == null
-        ) {
-            LazyColumn {
-                items(groups, key = { it }) { group ->
-                    ListItem(
-                        headlineContent = { Text(group.ifBlank { "Unknown" }) },
-                        leadingContent = {
-                            Icon(
-                                if (filter.category == Category.FOLDERS) Icons.Rounded.Folder
-                                else Icons.Rounded.Album,
-                                null,
-                            )
-                        },
-                        trailingContent = {
-                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null)
-                        },
-                        modifier =
-                            Modifier.clickable { vm.filter.value = filter.copy(group = group) },
-                        colors = ListItemDefaults.colors(containerColor = Ink),
+                IconButton(vm::playAll) {
+                    Icon(
+                        Icons.Rounded.PlayCircle,
+                        "Play up to 1,000 matching songs",
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
-        } else if (tracks.loadState.refresh is LoadState.Error) {
-            EmptyState("Library could not be loaded", "Try refreshing your music library.") {
-                TextButton(onClick = { tracks.retry() }) { Text("Retry") }
+        }
+        if (scan.running)
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
             }
-        } else if (
-            tracks.itemCount == 0 && tracks.loadState.refresh !is LoadState.Loading && !scan.running
-        ) {
-            EmptyState(
-                "A little quiet in here",
-                "Add local music, choose another category, or clear your search.",
-            ) {
-                TextButton(onClick = chooseFolder) { Text("Choose music folder") }
+        if (
+            scan.message.isNotEmpty() &&
+                (scan.running ||
+                    scan.message.contains("unavailable") ||
+                    scan.message.contains("again"))
+        )
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    scan.message,
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
             }
-        } else
-            LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
-                items(tracks.itemCount) { index ->
-                    tracks[index]?.let { track ->
-                        TrackRow(track, track.uri in favorites, vm, filter.playlist)
+        if (grouping && groups.isNotEmpty()) {
+            if (filter.category == Category.FOLDERS) {
+                if (folderPrefix.isNotEmpty() || groups.any { it.name.trim('/').isEmpty() })
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (folderPrefix.isNotEmpty())
+                                IconButton({
+                                    folderPrefix = folderPrefix.substringBeforeLast('/', "")
+                                }) {
+                                    Icon(Icons.Rounded.ArrowUpward, "Parent folder")
+                                }
+                            Text(
+                                folderPrefix.ifEmpty { "Storage root" },
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            groups
+                                .firstOrNull { it.name.trim('/') == folderPrefix }
+                                ?.let { g ->
+                                    TextButton({ vm.filter.value = filter.copy(group = g.name) }) {
+                                        Text("Songs here")
+                                    }
+                                }
+                        }
                     }
+                items(folderNodes, key = { it.path }) { node ->
+                    ListItem(
+                        headlineContent = {
+                            Text(node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        },
+                        supportingContent = { Text("${node.count} songs") },
+                        leadingContent = {
+                            Icon(
+                                Icons.Rounded.Folder,
+                                null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
+                        colors =
+                            ListItemDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.background
+                            ),
+                        modifier =
+                            Modifier.clickable {
+                                val direct = groups.firstOrNull { it.name.trim('/') == node.path }
+                                if (node.hasChildren || direct == null) folderPrefix = node.path
+                                else vm.filter.value = filter.copy(group = direct.name)
+                            },
+                    )
                 }
-                if (tracks.loadState.append is LoadState.Loading)
-                    item { CircularProgressIndicator(Modifier.padding(16.dp)) }
+            } else
+                itemsIndexed(groups, key = { _, g -> g.name }) { groupIndex, g ->
+                    if (albums)
+                        Column(
+                            Modifier.padding(
+                                    start = if (groupIndex % 2 == 0) 16.dp else 0.dp,
+                                    end = if (groupIndex % 2 == 1) 16.dp else 0.dp,
+                                    bottom = 20.dp,
+                                )
+                                .clickable { vm.filter.value = filter.copy(group = g.name) }
+                        ) {
+                            Artwork(g.artwork, Modifier.fillMaxWidth().aspectRatio(1f))
+                            Text(
+                                g.name.ifBlank { "Unknown album" },
+                                Modifier.padding(top = 8.dp),
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "${g.subtitle} · ${g.count} songs",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    else
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    g.name.ifBlank { "Unknown" },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            supportingContent = { Text("${g.count} songs") },
+                            leadingContent = {
+                                if (filter.category == Category.ARTISTS)
+                                    Box(
+                                        Modifier.size(48.dp)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(MaterialTheme.colorScheme.surface),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(Icons.Rounded.Person, null, tint = Muted)
+                                    }
+                                else Artwork(g.artwork, Modifier.size(48.dp))
+                            },
+                            trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
+                            colors =
+                                ListItemDefaults.colors(
+                                    containerColor = MaterialTheme.colorScheme.background
+                                ),
+                            modifier =
+                                Modifier.clickable { vm.filter.value = filter.copy(group = g.name) },
+                        )
+                }
+        } else if (tracks.loadState.refresh is LoadState.Error)
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                MusicEmptyState(
+                    "Library unavailable",
+                    "Check folder access and try again.",
+                    "Retry",
+                    { tracks.retry() },
+                    Icons.Rounded.FolderOff,
+                )
             }
+        else if (
+            tracks.itemCount == 0 && tracks.loadState.refresh !is LoadState.Loading && !scan.running
+        )
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                MusicEmptyState(
+                    if (filter.search.isBlank()) "No music found" else "No matches",
+                    if (filter.search.isBlank())
+                        "Add a local music folder or grant storage access to start listening."
+                    else "Try another song, artist or album.",
+                    if (filter.search.isBlank()) "Add Music" else "Clear search",
+                    {
+                        if (filter.search.isBlank()) chooseFolder()
+                        else vm.filter.value = filter.copy(search = "")
+                    },
+                    Icons.Rounded.LibraryMusic,
+                )
+            }
+        else {
+            items(tracks.itemCount) { i ->
+                tracks[i]?.let { TrackRow(it, it.uri in favorites, vm, filter.playlist) }
+            }
+            if (tracks.loadState.append is LoadState.Loading)
+                item { CircularProgressIndicator(Modifier.padding(16.dp)) }
+        }
     }
 }
 
@@ -479,7 +779,7 @@ private fun TrackRow(track: Track, favorite: Boolean, vm: PlayerViewModel, playl
                 )
                 if (settings.detailedList)
                     Text(
-                        "${track.mime} · ${track.size/1024} KiB · track ${track.trackNumber}",
+                        "${track.mime.substringAfter('/').uppercase()} · ${track.size/1024} KiB",
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -489,11 +789,6 @@ private fun TrackRow(track: Track, favorite: Boolean, vm: PlayerViewModel, playl
         leadingContent = { Artwork(track.artwork, Modifier.size(48.dp)) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    time(track.duration),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Muted,
-                )
                 Box {
                     IconButton(onClick = { menu = true }) {
                         Icon(Icons.Rounded.MoreVert, "Options for ${track.title}")
@@ -540,7 +835,7 @@ private fun TrackRow(track: Track, favorite: Boolean, vm: PlayerViewModel, playl
             }
         },
         modifier = Modifier.clickable { vm.play(track) },
-        colors = ListItemDefaults.colors(containerColor = Ink),
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
     )
     if (addToPlaylist)
         AlertDialog(
@@ -567,23 +862,28 @@ private fun TrackRow(track: Track, favorite: Boolean, vm: PlayerViewModel, playl
 }
 
 @Composable
-private fun Artwork(uri: String?, modifier: Modifier = Modifier) {
+internal fun Artwork(
+    uri: String?,
+    modifier: Modifier = Modifier,
+    corners: Int = 12,
+    fit: Boolean = false,
+) {
     Box(
-        modifier.clip(RoundedCornerShape(14.dp)).background(Surface),
+        modifier.clip(RoundedCornerShape(corners.dp)).background(MaterialTheme.colorScheme.surface),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             Icons.Rounded.Album,
             null,
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = .65f),
-            modifier = Modifier.fillMaxSize(.5f),
+            Modifier.fillMaxSize(.36f),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = .5f),
         )
         if (uri != null)
             AsyncImage(
-                model = uri,
-                contentDescription = "Album artwork",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                uri,
+                "Album artwork",
+                Modifier.fillMaxSize(),
+                contentScale = if (fit) ContentScale.Fit else ContentScale.Crop,
             )
     }
 }
@@ -596,15 +896,17 @@ private fun MiniPlayer(
     next: () -> Unit,
 ) {
     Surface(
-        color = Surface,
-        modifier =
-            Modifier.padding(horizontal = 12.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .clickable(onClick = open),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = open),
     ) {
         Column {
-            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Artwork(state.item?.mediaMetadata?.artworkUri?.toString(), Modifier.size(42.dp))
+            Row(
+                Modifier.fillMaxWidth()
+                    .heightIn(min = 68.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Artwork(state.item?.mediaMetadata?.artworkUri?.toString(), Modifier.size(44.dp), 8)
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(
                         state.item?.mediaMetadata?.title?.toString().orEmpty(),
@@ -615,17 +917,18 @@ private fun MiniPlayer(
                     Text(
                         state.item?.mediaMetadata?.artist?.toString().orEmpty(),
                         maxLines = 1,
-                        color = Muted,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
                     )
                 }
-                IconButton(onClick = toggle) {
+                IconButton(toggle) {
                     Icon(
                         if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         if (state.playing) "Pause" else "Play",
                     )
                 }
-                IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, "Next track") }
+                IconButton(next) { Icon(Icons.Rounded.SkipNext, "Next track") }
             }
             LinearProgressIndicator(
                 progress = {
@@ -634,6 +937,7 @@ private fun MiniPlayer(
                     else 0f
                 },
                 modifier = Modifier.fillMaxWidth().height(2.dp),
+                trackColor = Color.Transparent,
             )
         }
     }
@@ -650,158 +954,261 @@ private fun NowPlaying(
     lyrics: () -> Unit,
     eq: () -> Unit,
     visual: () -> Unit,
+    browse: () -> Unit,
 ) {
-    val dsp by vm.dspSettings.collectAsStateWithLifecycle()
     if (state.item == null) {
-        EmptyState("Ready when you are", "Choose a song from your library to start listening.")
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            MusicEmptyState(
+                "Ready to listen?",
+                "Choose music from your library to start playing.",
+                "Browse Library",
+                browse,
+            )
+        }
         return
     }
     val favorites by vm.favorites.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val source by vm.sourceInfo.collectAsStateWithLifecycle()
     val metadata = state.item.mediaMetadata
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val accent = MaterialTheme.colorScheme.primary
+    val background = MaterialTheme.colorScheme.background
+    BoxWithConstraints(
+        Modifier.fillMaxSize()
+            .background(
+                if (settings.artworkGradient)
+                    Brush.verticalGradient(
+                        listOf(accent.copy(alpha = .14f), background, background)
+                    )
+                else Brush.verticalGradient(listOf(background, background))
+            )
+    ) {
         val landscape = maxWidth > maxHeight
+        val artSize =
+            if (landscape) minOf(maxWidth * .4f, maxHeight - 32.dp).coerceAtLeast(96.dp)
+            else
+                minOf(maxWidth * .8f, (maxHeight - 320.dp).coerceAtLeast(160.dp))
+                    .coerceAtMost(380.dp)
         val art: @Composable () -> Unit = {
-            Artwork(metadata.artworkUri?.toString(), Modifier.fillMaxWidth().aspectRatio(1f))
+            Artwork(
+                metadata.artworkUri?.toString(),
+                Modifier.size(artSize),
+                settings.artworkCorners,
+                true,
+            )
+        }
+        val sourceBadge: @Composable () -> Unit = {
+            Surface(
+                color = accent.copy(alpha = .09f),
+                shape = RoundedCornerShape(8.dp),
+                onClick = info,
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(Icons.Rounded.GraphicEq, null, Modifier.size(16.dp), tint = accent)
+                    Text(
+                        if (technical)
+                            listOfNotNull(
+                                    source.codec.substringAfterLast('/').uppercase().takeUnless {
+                                        it.isBlank() || it == "NOT REPORTED"
+                                    },
+                                    source.bits?.let { "$it-bit" },
+                                    source.rate?.let { "${it/1000.0} kHz" },
+                                )
+                                .joinToString(" · ")
+                                .ifBlank { "Audio information" }
+                        else "Audio information",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = accent,
+                    )
+                    Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = accent)
+                }
+            }
         }
         val controls: @Composable () -> Unit = {
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(if (landscape) 4.dp else 6.dp),
             ) {
-                Spacer(Modifier.height(20.dp))
-                Text(
-                    metadata.title?.toString().orEmpty(),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    metadata.artist?.toString().orEmpty(),
-                    color = Muted,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    metadata.albumTitle?.toString().orEmpty(),
-                    color = Muted,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (technical)
-                    Text(
-                        "Android audio · ${if (state.buffering) "Buffering" else if(dsp.enabled) "EQ ${dsp.mode}" else if(dsp.replayMode != com.piccol.hifi.dsp.ReplayMode.OFF) "ReplayGain" else "DSP bypassed"}",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(top = 12.dp),
-                    )
-                var scrub by remember(state.item.mediaId) { mutableStateOf<Float?>(null) }
-                Slider(
-                    value =
-                        scrub
-                            ?: state.position
-                                .toFloat()
-                                .coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
-                    onValueChange = { scrub = it },
-                    onValueChangeFinished = {
-                        scrub?.let { vm.seek(it.toLong()) }
-                        scrub = null
-                    },
-                    valueRange = 0f..state.duration.coerceAtLeast(1).toFloat(),
-                    enabled = state.duration > 0,
-                )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        time(scrub?.toLong() ?: state.position),
-                        color = Muted,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                    Text(
-                        time(state.duration),
-                        color = Muted,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = vm::shuffle) {
-                        Icon(
-                            Icons.Rounded.Shuffle,
-                            "Shuffle ${if (state.shuffle) "on" else "off"}",
-                            tint = if (state.shuffle) MaterialTheme.colorScheme.primary else Muted,
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            metadata.title?.toString().orEmpty(),
+                            style =
+                                if (landscape) MaterialTheme.typography.titleLarge
+                                else MaterialTheme.typography.headlineSmall,
+                            maxLines = if (landscape) 1 else 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            metadata.artist?.toString().orEmpty(),
+                            style =
+                                if (landscape) MaterialTheme.typography.bodySmall
+                                else MaterialTheme.typography.bodyLarge,
+                            color = Muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            metadata.albumTitle?.toString().orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    IconButton(onClick = vm::previous) {
-                        Icon(Icons.Rounded.SkipPrevious, "Previous track", Modifier.size(34.dp))
-                    }
-                    FilledIconButton(onClick = vm::toggle, modifier = Modifier.size(72.dp)) {
-                        Icon(
-                            if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            if (state.playing) "Pause" else "Play",
-                            Modifier.size(38.dp),
-                        )
-                    }
-                    IconButton(onClick = vm::next) {
-                        Icon(Icons.Rounded.SkipNext, "Next track", Modifier.size(34.dp))
-                    }
-                    IconButton(onClick = vm::repeat) {
-                        Icon(
-                            if (state.repeat == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne
-                            else Icons.Rounded.Repeat,
-                            "Repeat ${when (state.repeat) { 1 -> "one"
- 2 -> "all"
- else -> "off" }}",
-                            tint =
-                                if (state.repeat != 0) MaterialTheme.colorScheme.primary else Muted,
-                        )
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    IconButton(onClick = { vm.favorite(state.item.mediaId) }) {
+                    IconButton({ vm.favorite(state.item.mediaId) }) {
                         Icon(
                             if (state.item.mediaId in favorites) Icons.Rounded.Favorite
                             else Icons.Rounded.FavoriteBorder,
                             "Toggle favorite",
+                            tint = if (state.item.mediaId in favorites) accent else Muted,
                         )
                     }
-                    IconButton(onClick = queue) {
-                        Icon(Icons.AutoMirrored.Rounded.QueueMusic, "Playback queue")
+                }
+                if (!landscape) sourceBadge()
+                var scrub by remember(state.item.mediaId) { mutableStateOf<Float?>(null) }
+                Column {
+                    Slider(
+                        value =
+                            scrub
+                                ?: state.position
+                                    .toFloat()
+                                    .coerceIn(0f, state.duration.coerceAtLeast(1).toFloat()),
+                        onValueChange = { scrub = it },
+                        onValueChangeFinished = {
+                            scrub?.let { vm.seek(it.toLong()) }
+                            scrub = null
+                        },
+                        valueRange = 0f..state.duration.coerceAtLeast(1).toFloat(),
+                        enabled = state.duration > 0,
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(
+                            time(scrub?.toLong() ?: state.position),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Muted,
+                        )
+                        Text(
+                            time(state.duration),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Muted,
+                        )
                     }
-                    IconButton(onClick = info) { Icon(Icons.Rounded.Info, "Audio information") }
                 }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(vm::shuffle) {
+                        Icon(
+                            Icons.Rounded.Shuffle,
+                            "Shuffle ${if(state.shuffle)"on" else "off"}",
+                            tint = if (state.shuffle) accent else Muted,
+                        )
+                    }
+                    IconButton(vm::previous, Modifier.size(52.dp)) {
+                        Icon(Icons.Rounded.SkipPrevious, "Previous track", Modifier.size(30.dp))
+                    }
+                    FilledIconButton(
+                        vm::toggle,
+                        Modifier.size(if (landscape) 56.dp else 68.dp),
+                        shape = RoundedCornerShape(24.dp),
+                    ) {
+                        Icon(
+                            if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            if (state.playing) "Pause" else "Play",
+                            Modifier.size(34.dp),
+                        )
+                    }
+                    IconButton(vm::next, Modifier.size(52.dp)) {
+                        Icon(Icons.Rounded.SkipNext, "Next track", Modifier.size(30.dp))
+                    }
+                    IconButton(vm::repeat) {
+                        Icon(
+                            if (state.repeat == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne
+                            else Icons.Rounded.Repeat,
+                            "Repeat ${when(state.repeat){1->"one"
+2->"all"
+else->"off"}}",
+                            tint = if (state.repeat != 0) accent else Muted,
+                        )
+                    }
+                }
+                HorizontalDivider(color = Color.White.copy(alpha = .06f))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    TextButton(lyrics) { Text("Lyrics") }
-                    TextButton(eq) { Text("Equalizer") }
-                    TextButton(visual) { Text("Visualizer") }
+                    PlayerAction(Icons.Rounded.Lyrics, "Lyrics", lyrics, Modifier.weight(1f))
+                    PlayerAction(Icons.Rounded.Tune, "Equalizer", eq, Modifier.weight(1f))
+                    PlayerAction(Icons.Rounded.GraphicEq, "Visualizer", visual, Modifier.weight(1f))
+                    PlayerAction(
+                        Icons.AutoMirrored.Rounded.QueueMusic,
+                        "Queue",
+                        queue,
+                        Modifier.weight(1f),
+                    )
+                    PlayerAction(Icons.Rounded.Info, "Audio info", info, Modifier.weight(1f))
                 }
+                if (landscape) sourceBadge()
                 state.error?.let {
                     Text(
                         it,
-                        color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
         }
         if (landscape)
             Row(
-                Modifier.fillMaxSize().padding(20.dp),
+                Modifier.fillMaxSize().padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
             ) {
-                Box(Modifier.weight(1f).padding(end = 24.dp)) { art() }
-                Box(Modifier.weight(1f)) { LazyColumn { item { controls() } } }
+                art()
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { controls() }
             }
         else
-            LazyColumn(
-                contentPadding = PaddingValues(24.dp),
+            Column(
+                Modifier.fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item { art() }
-                item { controls() }
+                art()
+                Box(Modifier.widthIn(max = 480.dp)) { controls() }
             }
+    }
+}
+
+@Composable
+private fun PlayerAction(
+    icon: ImageVector,
+    label: String,
+    click: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = click)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(icon, label, Modifier.size(21.dp), tint = Muted)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Muted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -871,7 +1278,12 @@ private fun QueueSheet(vm: PlayerViewModel, state: PlaybackState) {
 
 @UnstableApi
 @Composable
-private fun PlaylistsScreen(vm: PlayerViewModel, open: () -> Unit) {
+private fun PlaylistsScreen(
+    vm: PlayerViewModel,
+    open: () -> Unit,
+    createRequest: Int = 0,
+    importRequest: Int = 0,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var exporting by remember { mutableStateOf<PlaylistSummary?>(null) }
@@ -920,72 +1332,135 @@ private fun PlaylistsScreen(vm: PlayerViewModel, open: () -> Unit) {
     var create by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf<PlaylistSummary?>(null) }
     var delete by remember { mutableStateOf<PlaylistSummary?>(null) }
-    LazyColumn {
-        item {
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+    val importTypes =
+        arrayOf(
+            "audio/x-mpegurl",
+            "application/x-mpegurl",
+            "application/vnd.apple.mpegurl",
+            "text/*",
+            "application/octet-stream",
+        )
+    LaunchedEffect(createRequest) { if (createRequest > 0) create = true }
+    LaunchedEffect(importRequest) { if (importRequest > 0) importer.launch(importTypes) }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(132.dp),
+        contentPadding = PaddingValues(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            SectionHeading(
+                "Your playlists",
+                if (playlists.isEmpty()) "Make room for your favorites"
+                else "${playlists.size} collections",
             ) {
-                Text("Made by you", style = MaterialTheme.typography.headlineSmall)
-                FilledTonalButton(onClick = { create = true }) {
-                    Icon(Icons.Rounded.Add, null)
-                    Text("New")
+                TextButton({ importer.launch(importTypes) }) {
+                    Icon(Icons.Rounded.FileOpen, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Import")
                 }
             }
         }
-        item {
-            TextButton({
-                importer.launch(
-                    arrayOf(
-                        "audio/x-mpegurl",
-                        "application/x-mpegurl",
-                        "application/vnd.apple.mpegurl",
-                        "text/*",
-                        "application/octet-stream",
-                    )
-                )
-            }) {
-                Text("Import M3U8 from indexed content URIs")
-            }
-        }
-        item { SmartPlaylistsSection(vm, open) }
         if (playlists.isEmpty())
-            item {
-                Text("Create a playlist, then add songs from the library.", Modifier.padding(16.dp))
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                MusicEmptyState(
+                    "Create your first playlist",
+                    "Organize your favorite songs into collections.",
+                    "Create Playlist",
+                    { create = true },
+                    Icons.AutoMirrored.Rounded.QueueMusic,
+                )
             }
         items(playlists, key = { it.id }) { p ->
-            ListItem(
-                headlineContent = { Text(p.name) },
-                supportingContent = { Text("${p.count} songs · ${time(p.duration)}") },
-                leadingContent = { Icon(Icons.AutoMirrored.Rounded.QueueMusic, null) },
-                trailingContent = {
-                    Row {
-                        IconButton(
-                            onClick = {
-                                exporting = p
-                                exporter.launch("${p.name}.m3u8")
-                            }
+            var menu by remember(p.id) { mutableStateOf(false) }
+            Column(
+                Modifier.clip(RoundedCornerShape(14.dp)).clickable {
+                    vm.filter.value = LibraryFilter(playlist = p.id)
+                    open()
+                }
+            ) {
+                Box {
+                    Artwork(p.artwork, Modifier.fillMaxWidth().aspectRatio(1f), 14)
+                    Box(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                        FilledTonalIconButton(
+                            { menu = true },
+                            colors =
+                                IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = Color.Black.copy(alpha = .65f),
+                                    contentColor = Color.White,
+                                ),
                         ) {
-                            Icon(Icons.Rounded.SaveAlt, "Export ${p.name}")
+                            Icon(Icons.Rounded.MoreHoriz, "Options for ${p.name}")
                         }
-                        IconButton(onClick = { rename = p }) {
-                            Icon(Icons.Rounded.Edit, "Rename playlist")
-                        }
-                        IconButton(onClick = { delete = p }) {
-                            Icon(Icons.Rounded.DeleteOutline, "Delete playlist")
+                        DropdownMenu(menu, { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Export playlist") },
+                                onClick = {
+                                    menu = false
+                                    exporting = p
+                                    exporter.launch("${p.name}.m3u8")
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Rename") },
+                                onClick = {
+                                    menu = false
+                                    rename = p
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete") },
+                                onClick = {
+                                    menu = false
+                                    delete = p
+                                },
+                            )
                         }
                     }
-                },
-                colors = ListItemDefaults.colors(containerColor = Ink),
-                modifier =
-                    Modifier.clickable {
-                        vm.filter.value = LibraryFilter(playlist = p.id)
-                        open()
-                    },
-            )
+                }
+                Text(
+                    p.name,
+                    Modifier.padding(top = 8.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${p.count} tracks · ${time(p.duration)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                    maxLines = 1,
+                )
+            }
         }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            SectionHeading("Smart collections", "Always up to date")
+        }
+        items(
+            listOf(
+                Triple("Recently Played", Category.RECENT, Icons.Rounded.History),
+                Triple("Most Played", Category.MOST, Icons.Rounded.BarChart),
+                Triple("Favorites", Category.FAVORITES, Icons.Rounded.FavoriteBorder),
+                Triple("Recently Added", Category.ADDED, Icons.Rounded.LibraryAdd),
+            )
+        ) { (name, category, icon) ->
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                onClick = {
+                    vm.filter.value = LibraryFilter(category = category)
+                    open()
+                },
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+                    Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                }
+            }
+        }
+        item(span = { GridItemSpan(maxLineSpan) }) { SmartPlaylistsSection(vm, open) }
     }
+
     if (create)
         NameDialog("New playlist", "", { create = false }) {
             vm.createPlaylist(it)
@@ -1025,111 +1500,294 @@ private fun SettingsScreen(
     notifications: () -> Unit,
     profiles: () -> Unit,
     output: () -> Unit,
+    section: String?,
+    choose: (String?) -> Unit,
+    openEq: () -> Unit,
+    openVisual: () -> Unit,
 ) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val folders by vm.folders.collectAsStateWithLifecycle()
-    LazyColumn(
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item { Text("Audio", style = MaterialTheme.typography.titleLarge) }
-        item {
-            Text("Playback speed · ${"%.2f".format(settings.speed)}×")
-            var speed by remember(settings.speed) { mutableFloatStateOf(settings.speed) }
-            Slider(
-                value = speed,
-                onValueChange = { speed = it },
-                onValueChangeFinished = { vm.speed(speed) },
-                valueRange = .5f..2f,
-                steps = 5,
-            )
-            Text(
-                "FLAC transitions were verified. Sample-exact MP3 gapless is not certified; the tested legacy decoder leaves boundary samples. Crossfade is unavailable. Equalizer and ReplayGain are available in the Equalizer tab.",
-                color = Muted,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        item {
-            TextButton(profiles) { Text("Headphone & output EQ profiles") }
-            TextButton(output) { Text("Audio output information") }
-        }
-        item { TextButton(onClick = notifications) { Text("Allow playback notifications") } }
-        item {
-            HorizontalDivider()
-            Text("Library", style = MaterialTheme.typography.titleLarge)
-        }
-        item {
-            Button(onClick = addFolder) {
-                Icon(Icons.Rounded.CreateNewFolder, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Add music folder")
-            }
-        }
-        items(folders.toList(), key = { it }) { folder ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    android.net.Uri.decode(folder.substringAfterLast('/')),
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                IconButton(onClick = { vm.removeFolder(folder) }) {
-                    Icon(Icons.Rounded.Close, "Remove folder access")
+    val categories =
+        listOf(
+            Triple("Playback", "Speed and notifications", Icons.Rounded.PlayCircle),
+            Triple("Audio Output", "Route, source format and profiles", Icons.Rounded.Headphones),
+            Triple("Equalizer", "Presets, ReplayGain and AutoEq", Icons.Rounded.Tune),
+            Triple("Visualizer", "Analysis, color and motion", Icons.Rounded.GraphicEq),
+            Triple("Library", "Folders and music access", Icons.Rounded.Folder),
+            Triple("Appearance", "Theme, artwork and song rows", Icons.Rounded.Palette),
+            Triple("Widgets", "Home-screen player controls", Icons.Rounded.Widgets),
+            Triple("Privacy & Data", "Local storage and playback history", Icons.Rounded.Security),
+            Triple("About", "App version and open-source licenses", Icons.Rounded.Info),
+        )
+    key(section) {
+        LazyColumn(
+            contentPadding = PaddingValues(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (section == null) {
+                items(categories) { (title, description, icon) ->
+                    SettingRow(title, description, icon, { choose(title) })
                 }
-            }
-        }
-        item { TextButton(onClick = vm::refresh) { Text("Scan library") } }
-        item {
-            HorizontalDivider()
-            Text("Appearance", style = MaterialTheme.typography.titleLarge)
-        }
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Detailed library rows", Modifier.weight(1f))
-                Switch(settings.detailedList, vm::detailedList)
-            }
-        }
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Compact audio information", Modifier.weight(1f))
-                Switch(checked = settings.technicalInfo, onCheckedChange = vm::technical)
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf("Blue", "Mint", "Violet").forEachIndexed { i, name ->
-                    FilterChip(
-                        selected = settings.accent == i,
-                        onClick = { vm.accent(i) },
-                        label = { Text(name) },
-                    )
+            } else
+                when (section) {
+                    "Playback" -> {
+                        item {
+                            SettingRow(
+                                "Playback speed",
+                                "${"%.2f".format(settings.speed)}×",
+                                Icons.Rounded.Speed,
+                            )
+                        }
+                        item {
+                            var speed by
+                                remember(settings.speed) { mutableFloatStateOf(settings.speed) }
+                            Slider(
+                                speed,
+                                { speed = it },
+                                Modifier.padding(horizontal = 24.dp),
+                                onValueChangeFinished = { vm.speed(speed) },
+                                valueRange = .5f..2f,
+                                steps = 5,
+                            )
+                        }
+                        if (Build.VERSION.SDK_INT >= 33)
+                            item {
+                                SettingRow(
+                                    "Playback notifications",
+                                    "Control music from Android notifications",
+                                    Icons.Rounded.Notifications,
+                                    notifications,
+                                )
+                            }
+                        else
+                            item {
+                                SettingRow(
+                                    "Playback notifications",
+                                    "Managed by Android",
+                                    Icons.Rounded.Notifications,
+                                )
+                            }
+                        item {
+                            SettingRow(
+                                "Track transitions",
+                                "FLAC frame continuity verified. Sample-exact MP3 gapless remains incomplete on the tested legacy decoder; crossfade is unavailable.",
+                                Icons.Rounded.SkipNext,
+                            )
+                        }
+                    }
+                    "Audio Output" -> {
+                        item {
+                            SettingRow(
+                                "Audio output information",
+                                "Actual route, source and processing format",
+                                Icons.Rounded.Headphones,
+                                output,
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "Headphone & output EQ profiles",
+                                "Local corrections and route-category assignments",
+                                Icons.Rounded.Tune,
+                                profiles,
+                            )
+                        }
+                    }
+                    "Equalizer" -> {
+                        item {
+                            SettingRow(
+                                "Open equalizer",
+                                "10-band, parametric and 31-band DSP",
+                                Icons.Rounded.Tune,
+                                openEq,
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "AutoEq & output profiles",
+                                "Import a local correction file",
+                                Icons.Rounded.Headphones,
+                                profiles,
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "ReplayGain",
+                                "Track/album gain and peak protection are in the equalizer controls",
+                                Icons.Rounded.VolumeUp,
+                                openEq,
+                            )
+                        }
+                    }
+                    "Visualizer" -> {
+                        item {
+                            SettingRow(
+                                "Open visualizer",
+                                "Six real PCM/FFT modes with settings",
+                                Icons.Rounded.GraphicEq,
+                                openVisual,
+                            )
+                        }
+                        item { MotionSettings(vm) }
+                    }
+                    "Library" -> {
+                        item {
+                            SettingRow(
+                                "Add music folder",
+                                "Keep access to a selected local folder",
+                                Icons.Rounded.CreateNewFolder,
+                                addFolder,
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "Scan library",
+                                "Refresh local music and availability",
+                                Icons.Rounded.Refresh,
+                                vm::refresh,
+                            )
+                        }
+                        items(folders.toList(), key = { it }) { folder ->
+                            SettingRow(
+                                android.net.Uri.decode(folder.substringAfterLast('/')),
+                                "Selected folder",
+                                Icons.Rounded.Folder,
+                                trailing = {
+                                    IconButton({ vm.removeFolder(folder) }) {
+                                        Icon(Icons.Rounded.Close, "Remove folder access")
+                                    }
+                                },
+                            )
+                        }
+                    }
+                    "Appearance" -> {
+                        item {
+                            SettingRow(
+                                "AMOLED black",
+                                "Use a black background instead of dark gray",
+                                Icons.Rounded.DarkMode,
+                                trailing = {
+                                    Switch(settings.amoled, { vm.appearance(amoled = it) })
+                                },
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "Accent color",
+                                "Selected controls and progress",
+                                Icons.Rounded.Palette,
+                            )
+                        }
+                        item {
+                            Row(
+                                Modifier.padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                listOf("Blue", "Mint", "Violet").forEachIndexed { i, label ->
+                                    CompactTab(label, settings.accent == i, { vm.accent(i) })
+                                }
+                            }
+                        }
+                        item {
+                            SettingRow(
+                                "Artwork accent",
+                                "Sample local album artwork; use selected accent when unavailable",
+                                Icons.Rounded.ColorLens,
+                                trailing = {
+                                    Switch(
+                                        settings.artworkColor,
+                                        { vm.appearance(artworkColor = it) },
+                                    )
+                                },
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "Artwork background",
+                                "Subtle gradient behind Now Playing; turn off for a plain background",
+                                Icons.Rounded.Gradient,
+                                trailing = {
+                                    Switch(
+                                        settings.artworkGradient,
+                                        { vm.appearance(gradient = it) },
+                                    )
+                                },
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "Artwork corners",
+                                "${settings.artworkCorners} dp on Now Playing",
+                                Icons.Rounded.CropSquare,
+                            )
+                        }
+                        item {
+                            Slider(
+                                settings.artworkCorners.toFloat(),
+                                { vm.appearance(corners = it.toInt()) },
+                                Modifier.padding(horizontal = 24.dp),
+                                valueRange = 0f..32f,
+                                steps = 7,
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "Compact song rows",
+                                "Turn off to show extra file details",
+                                Icons.Rounded.ViewList,
+                                trailing = {
+                                    Switch(!settings.detailedList, { vm.detailedList(!it) })
+                                },
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "Detailed audio badge",
+                                "Show reported source format on Now Playing",
+                                Icons.Rounded.HighQuality,
+                                trailing = { Switch(settings.technicalInfo, vm::technical) },
+                            )
+                        }
+                        item { MotionSettings(vm) }
+                    }
+                    "Widgets" ->
+                        item { Box(Modifier.padding(horizontal = 16.dp)) { WidgetSettings(vm) } }
+                    "Privacy & Data" -> {
+                        item {
+                            SettingRow(
+                                "Completely offline",
+                                "No accounts, ads, analytics, microphone or network permission. Music files stay on your device.",
+                                Icons.Rounded.Security,
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "Local data",
+                                "Library, playlists, favorites, lyrics and settings are stored locally. Android backup/transfer is excluded.",
+                                Icons.Rounded.Storage,
+                            )
+                        }
+                        item {
+                            SettingRow(
+                                "Clear playback history",
+                                "Keeps your music files, playlists and favorites",
+                                Icons.Rounded.History,
+                                vm::clearHistory,
+                            )
+                        }
+                    }
+                    "About" -> {
+                        item {
+                            Column(
+                                Modifier.padding(horizontal = 20.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                AboutSettings()
+                            }
+                        }
+                        item { Box(Modifier.padding(horizontal = 12.dp)) { LicenseSettings() } }
+                    }
                 }
-            }
-        }
-        item { WidgetSettings(vm) }
-        item { MotionSettings(vm) }
-        item { LicenseSettings() }
-        item {
-            HorizontalDivider()
-            Text("Privacy & data", style = MaterialTheme.typography.titleLarge)
-        }
-        item {
-            Text(
-                "Your library, playlists, favorites, queue and settings are stored locally. No accounts, analytics, ads or network permission.",
-                color = Muted,
-            )
-        }
-        item { TextButton(onClick = vm::clearHistory) { Text("Clear playback history") } }
-        item {
-            HorizontalDivider()
-            Text(
-                "HiFi Player ${com.piccol.hifi.BuildConfig.VERSION_NAME}",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                "Native Android · Media3 playback\nOutput quality depends on the decoder, Android mixer and connected device. Bit-perfect output is not verified.",
-                color = Muted,
-                style = MaterialTheme.typography.bodySmall,
-            )
         }
     }
 }

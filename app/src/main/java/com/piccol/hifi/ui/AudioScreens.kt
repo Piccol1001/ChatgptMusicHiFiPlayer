@@ -404,13 +404,11 @@ fun SmartPlaylistsSection(vm: PlayerViewModel, open: () -> Unit) {
     var edit by remember { mutableStateOf<SmartPlaylist?>(null) }
     var create by remember { mutableStateOf(false) }
     Column(
-        Modifier.heightIn(max = 260.dp)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
+        Modifier.fillMaxWidth()
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Smart playlists",
+                "Custom smart rules",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )

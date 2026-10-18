@@ -1,9 +1,30 @@
+import groovy.json.JsonSlurper
+import java.util.Properties
+import java.security.KeyStore
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+val appVersion = Properties().apply { rootProject.file("version.properties").inputStream().use { load(it) } }
+val suppliedName = providers.gradleProperty("releaseVersionName").orNull
+val suppliedCode = providers.gradleProperty("releaseVersionCode").orNull
+require((suppliedName == null) == (suppliedCode == null)) { "Supply both releaseVersionName and releaseVersionCode." }
+val resolvedName = suppliedName ?: appVersion.getProperty("versionName")
+val resolvedCode = (suppliedCode ?: appVersion.getProperty("versionCode")).toInt()
+require(Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)").matches(resolvedName)) { "Use MAJOR.MINOR.PATCH." }
+require(resolvedCode in 1..2100000000) { "Invalid Android versionCode." }
+val releaseHistory = JsonSlurper().parse(rootProject.file("releases/history.json")) as Map<*, *>
+val pastReleases = (releaseHistory["releases"] as List<*>).map { it as Map<*, *> }
+val highestRelease = pastReleases.maxBy { (it["versionCode"] as Number).toInt() }
+val highestCode = (highestRelease["versionCode"] as Number).toInt()
+require(resolvedCode > highestCode || (resolvedCode == highestCode && resolvedName == highestRelease["versionName"])) {
+    "Version metadata would regress or relabel a known release. Use tools/release.py."
+}
+
 android {
     namespace = "com.piccol.hifi"
     compileSdk = 36
@@ -11,8 +32,8 @@ android {
         applicationId = "com.piccol.hifi"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = resolvedCode
+        versionName = resolvedName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -57,4 +78,23 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+}
+
+// Never let AGP silently create a replacement key for the existing installable APK line.
+android.signingConfigs.getByName("debug").apply {
+    providers.environmentVariable("HIFI_DEBUG_KEYSTORE").orNull?.let { storeFile = file(it) }
+}
+tasks.matching { it.name.startsWith("validateSigningDebug") }.configureEach {
+    outputs.upToDateWhen { false }
+    doFirst {
+        val signing = android.signingConfigs.getByName("debug")
+        val keyFile = signing.storeFile ?: error("Restore the existing update keystore.")
+        check(keyFile.isFile) { "Existing update keystore missing: $keyFile. Restore it; do not generate a new certificate." }
+        val store = KeyStore.getInstance(keyFile, signing.storePassword!!.toCharArray())
+        val digest = MessageDigest.getInstance("SHA-256").digest(store.getCertificate(signing.keyAlias).encoded)
+            .joinToString("") { "%02x".format(it) }
+        check(digest == releaseHistory["updateCertificateSha256"]) {
+            "Signing certificate changed. This APK cannot update existing installs. Restore the original key."
+        }
+    }
 }

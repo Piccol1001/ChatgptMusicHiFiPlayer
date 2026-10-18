@@ -4,15 +4,15 @@ Phases 1–5 have working implementations, with acceptance limits listed below. 
 
 | Area | Current implementation | Remaining work |
 | --- | --- | --- |
-| Native app | Kotlin, Compose, Material 3, min 26 / target 36; dark blue/mint/violet accents | Device accessibility audit, album-derived accents, light theme |
+| Native app | Kotlin, Compose, Material 3, min 26 / target 36; black/dark-gray themes, blue/mint/violet or local artwork accents, grouped Settings/About | Device accessibility audit, light theme |
 | Library | MediaStore including removable volumes on API 29+, multiple persisted SAF trees, IO scan, paging, search, sorting and MIME filters | Native Room index verified with 6 MediaStore files; standalone Opus indexing varies by OS. Real SD/provider matrix; cross-provider URI dedup; incremental background indexing; codec-specific filters |
 | Metadata/art | MediaStore/SAF tags, cached downsampled embedded artwork, source/processing/output technical information | Broader tag corpus, uncommon metadata and cache pruning |
 | Categories | Songs, albums, artists, genres, folders, favorites, recent additions/history and play counts; separate playlist tab | Group lists themselves are not paged; benchmark very large group counts |
 | Playback | One Media3 service/player, session controls, play/pause/seek/next/previous, focus/noisy handling | Bluetooth/headphone and locked-screen acceptance on hardware |
 | Queue | Play next, append/remove, up/down reorder, save playlist; repeat/shuffle through Media3 | Drag gestures, huge queue optimization; playlist membership intentionally excludes duplicates |
 | Restoration | Queue/index/position/shuffle/repeat saved in DataStore, restores paused | Service destruction/recreation tested; full process kill and force-stop acceptance pending; abrupt death can lose up to five seconds |
-| Playlists | Create, rename, delete, add/remove songs, ordered membership, count/duration | Drag/sort/search within playlist UI, covers; portable M3U path resolution (URI M3U8 and smart rules now implemented) |
-| Settings | Speed, information strip, accent, folders/scan, history clearing, audio profiles/output, widgets, reduced motion and offline licenses | App-wide backup/export/reset and additional themes |
+| Playlists | Create, rename, delete, add/remove songs, ordered membership, artwork covers, count/duration | Drag/sort/search within playlist UI; portable M3U path resolution (URI M3U8 and smart rules now implemented) |
+| Settings | Speed, information strip, accent, folders/scan, history clearing, audio profiles/output, widgets, reduced motion offline licenses, installed About version and artwork appearance | App-wide backup/export/reset and light theme |
 | Core formats | Standard Media3/Android decoder paths; all six generated format fixtures played on API 28 | See TESTING.md for actual executed coverage; hardware codec variation |
 | ALAC / AIFF | Streaming AIFF/AIFC signed PCM extractor; ALAC platform decoder detection and explicit unsupported message | API 28 verified AIFF 16/24-bit and seeking; ALAC unsupported message verified; no bundled ALAC decoder; compressed/float AIFC unsupported |
 | Gapless | Media3 1.11.1; exact FLAC PCM and AudioTrack reuse verified; MP3 boundary/terminal-tail diagnostic | MP3 sample-exact acceptance incomplete: API 28 transition residual 22–551 samples (~0.5–12.5 ms), terminal tail 551 samples; physical listening pending |
