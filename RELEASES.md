@@ -25,3 +25,12 @@ First repository publication, Git commit acb63a974dd936237471da9870285a8bb57146f
 | --- | --- | --- | --- | --- |
 | [HiFiPlayer-0.5.0-debug.apk](https://github.com/Piccol1001/ChatgptMusicHiFiPlayer/blob/acb63a974dd936237471da9870285a8bb57146fc/artifacts/apk/HiFiPlayer-0.5.0-debug.apk) | 0.5.0 | 5 | debug-signed | `84539e7f1ae280693b0096fa314672a8bb8618ac3288d1be603ab9e5c0de1034` |
 | [HiFiPlayer-0.5.0-release-unsigned.apk](https://github.com/Piccol1001/ChatgptMusicHiFiPlayer/blob/acb63a974dd936237471da9870285a8bb57146fc/artifacts/apk/HiFiPlayer-0.5.0-release-unsigned.apk) | 0.5.0 | 5 | unsigned | `61a890d41ca88df2b0c15f3668ec66267544dba41896dc6d8e34a1b4eb3d1655` |
+
+## 0.6.0 (code 6) — 2026-10-18
+
+Verified build/packaging date in Asia/Kuala_Lumpur; GitHub publication occurs separately.
+
+| APK | Embedded versionName | Embedded versionCode | Signing | SHA-256 |
+| --- | --- | --- | --- | --- |
+| [HiFiPlayer_v0.6.0_debug.apk](artifacts/apk/HiFiPlayer_v0.6.0_debug.apk) | 0.6.0 | 6 | debug-signed | `c8e7650e11467ed04274277e643ee3b0eb63beb79935ca64eea4785066946b55` |
+| [HiFiPlayer_v0.6.0_release-unsigned.apk](artifacts/apk/HiFiPlayer_v0.6.0_release-unsigned.apk) | 0.6.0 | 6 | unsigned | `6eca7eabf36d1cce0d699170e933cae0d99d2d6a6c577bdc9cfb53fc5ceffcb0` |

@@ -1,6 +1,6 @@
 # Validation and test procedures
 
-Evidence is from the prepared Codex Linux machine and an API 28 software emulator. Build/JVM/emulator results do not certify physical audio hardware, battery use or startup performance. Historical phase checkpoints are in [docs/PHASE_REPORTS.md](docs/PHASE_REPORTS.md).
+Evidence is from the prepared Codex Linux machine and API 28 and API 30 software emulators. Build/JVM/emulator results do not certify physical audio hardware, battery use or startup performance. Historical phase checkpoints are in [docs/PHASE_REPORTS.md](docs/PHASE_REPORTS.md).
 
 ## Redesign verification — 2026-10-18
 
@@ -97,3 +97,9 @@ Runner reports are under `app/build/reports/tests/testDebugUnitTest/`, `app/buil
 `tools/release.py` explicitly selects a semantic bump, builds and verifies candidate APKs, then appends artifacts/history/checksums and records the successful version. The old `tools/package_apks.py` entry point now requires the same explicit options and forwards to this workflow; it no longer deletes or relabels historical APKs. See docs/RELEASE_WORKFLOW.md. The debug APK is installable for evaluation; the unsigned release needs owner signing. Toolchains, emulator images, credentials, caches and keystores stay outside version control. TLS/checksum verification was preserved during setup. Reusable environment setup instructions were saved separately for review; saving them does not demonstrate a fresh-machine run.
 
 Final API 30 screenshot fixture run passed (1 test, 18 selected captures), including small-screen, large-text and landscape layouts.
+
+## Verified 0.6.0 release and update
+
+The explicit minor release workflow built both APK variants successfully from clean source commit `6dc3416cbd0b36fe948201e8b32b6d0a536b8993`. Both embedded APKs report `com.piccol.hifi`, versionName `0.6.0`, versionCode `6`. The candidate run passed 45 unit cases and lint (0 errors, 22 warnings); the six release-safety tests passed separately. All six retained APK checksums passed. The installable evaluation APK verifies with the unchanged SHA-256 certificate `322612b8f4ffae7f3e47ac07f9f4357e1944ecc8c4c71a1ee0cbfd013a2d2428`; the release variant is unsigned.
+
+On the retained original API 28 installation, PackageManager first confirmed 0.5.0/code 5. After force-stopping the app, hashes were recorded for music.db, its WAL/SHM and all three existing DataStore files. `adb install -r` of the actual 0.6.0 APK succeeded; PackageManager then reported 0.6.0/code 6. Before relaunch, **all six hashes matched exactly**. No uninstall, data clear or fixture seeding was used on that installation. This verifies this emulator update path; physical-device upgrades remain unverified.

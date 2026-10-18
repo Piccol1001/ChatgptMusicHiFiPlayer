@@ -46,6 +46,44 @@
           "certificateSha256": null
         }
       ]
+    },
+    {
+      "versionName": "0.6.0",
+      "versionCode": 6,
+      "releaseDate": "2026-10-18",
+      "dateEvidence": "Verified build/packaging date in Asia/Kuala_Lumpur; GitHub publication occurs separately.",
+      "sourceCommit": "6dc3416cbd0b36fe948201e8b32b6d0a536b8993",
+      "sourceDirty": false,
+      "changes": {
+        "features": [
+          "Verified release workflow with explicit semantic-version selection, monotonic Android version codes and append-only artifact history.",
+          "Local artwork-derived accent, black/dark-gray themes, artwork gradient/corner controls and indexed folder-tree browsing."
+        ],
+        "fixes": [
+          "Failed build attempts no longer advance the recorded release version.",
+          "Release packaging verifies embedded APK metadata, checksums and the existing update certificate without deleting older APKs."
+        ],
+        "ui": [
+          "Complete original redesign of navigation, library/album and playlist cards, artwork-led Now Playing, EQ controls/axes, visualizer layout and grouped Settings.",
+          "Persistent compact mini-player with real progress and a single main transport row.",
+          "Settings \u2192 About \u2192 App Version reads installed package metadata; the main header contains no version.",
+          "Available-height EQ sizing, compact landscape transport and spaced large-text navigation labels."
+        ]
+      },
+      "artifacts": [
+        {
+          "path": "artifacts/apk/HiFiPlayer_v0.6.0_debug.apk",
+          "sha256": "c8e7650e11467ed04274277e643ee3b0eb63beb79935ca64eea4785066946b55",
+          "signing": "debug-signed",
+          "certificateSha256": "322612b8f4ffae7f3e47ac07f9f4357e1944ecc8c4c71a1ee0cbfd013a2d2428"
+        },
+        {
+          "path": "artifacts/apk/HiFiPlayer_v0.6.0_release-unsigned.apk",
+          "sha256": "6eca7eabf36d1cce0d699170e933cae0d99d2d6a6c577bdc9cfb53fc5ceffcb0",
+          "signing": "unsigned",
+          "certificateSha256": null
+        }
+      ]
     }
   ]
 }

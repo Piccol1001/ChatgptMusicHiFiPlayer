@@ -5,9 +5,11 @@ These are Android emulator screenshots, not design mockups. `before/` comes from
 | Screen | Before | Redesigned empty/idle | Redesigned populated/playing |
 | --- | --- | --- | --- |
 | Library | [Before](before/library.png) | [Empty](current/01-library-empty.png) | [Songs](current/05-library-songs.png), [albums](current/06-library-albums.png) |
-| Playlists | [Before](before/playlists.png) | [Empty](current/02-playlists-empty.png) | [Populated](current/07-playlists-populated.png) |
-| Now Playing | [Before](before/playing.png) | [Empty](current/03-playing-empty.png) | [Playing](current/08-now-playing.png), [mini-player](current/09-library-mini-player.png) |
+| Playlists | [Before](before/playlists.png) | [Empty](current/02-playlists-empty.png) | [Populated](current/07-playlists-populated.png), [with mini-player](current/08-playlists-mini-player.png) |
+| Now Playing | [Before](before/playing.png) | [Empty](current/03-playing-empty.png) | [Playing, landscape](current/17-now-playing-landscape.png), [mini-player](current/09-library-mini-player.png) |
 | Equalizer | [Before](before/equalizer.png) | — | [10 bands](current/10-eq-ten.png), [31 bands](current/11-eq-thirty-one.png), [parametric](current/12-eq-parametric.png) |
 | Visualizer | [Before](before/visualizer.png) | [Idle](current/04-visualizer-idle.png) | [Real signal](current/13-visualizer-playing.png) |
 
 Adaptive captures: [320 dp library](current/14-library-small.png), [1.5× text library](current/15-library-large-font.png), [1.5× text EQ](current/16-eq-large-font.png), [landscape player](current/17-now-playing-landscape.png), [landscape EQ](current/18-eq-landscape.png).
+
+Manual inspection found that capture 08 remained on Playlists after the first native navigation attempt. It is labeled by its actual screen here; the landscape capture verifies populated Now Playing. A passing capture runner alone does not assert every intended destination.

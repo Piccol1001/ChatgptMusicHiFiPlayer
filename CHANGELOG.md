@@ -4,6 +4,28 @@ Semantic Versioning: MAJOR = significant architectural changes; MINOR = new func
 
 <!-- releases -->
 
+## 0.6.0 — 2026-10-18
+
+Android versionCode: `6`.
+
+### New features
+
+- Verified release workflow with explicit semantic-version selection, monotonic Android version codes and append-only artifact history.
+- Local artwork-derived accent, black/dark-gray themes, artwork gradient/corner controls and indexed folder-tree browsing.
+
+### Bug fixes
+
+- Failed build attempts no longer advance the recorded release version.
+- Release packaging verifies embedded APK metadata, checksums and the existing update certificate without deleting older APKs.
+
+### UI improvements
+
+- Complete original redesign of navigation, library/album and playlist cards, artwork-led Now Playing, EQ controls/axes, visualizer layout and grouped Settings.
+- Persistent compact mini-player with real progress and a single main transport row.
+- Settings → About → App Version reads installed package metadata; the main header contains no version.
+- Available-height EQ sizing, compact landscape transport and spaced large-text navigation labels.
+
+
 ## 0.5.0 — 2026-10-17
 
 Android versionCode: `5`.

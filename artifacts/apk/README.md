@@ -1,12 +1,14 @@
 # Prebuilt APKs
 
+Latest: **0.6.0 (versionCode 6)**. Install [HiFiPlayer_v0.6.0_debug.apk](HiFiPlayer_v0.6.0_debug.apk), signed with the established development certificate. The [unsigned release APK](HiFiPlayer_v0.6.0_release-unsigned.apk) is not installable. Both embedded versions, package identity, signing status and all historical checksums were verified. An in-place update over the retained 0.5.0 installation succeeded with all six database/DataStore file hashes unchanged. The source revision is recorded in releases/history.json.
+
 The 0.5.0 files below are retained historical evaluation artifacts. Future verified releases are appended with `HiFiPlayer_v<version>_<variant>.apk` names; see [RELEASES.md](../../RELEASES.md), [CHANGELOG.md](../../CHANGELOG.md) and the [release workflow](../../docs/RELEASE_WORKFLOW.md). Do not overwrite or relabel old files.
 
 ## Historical snapshot — 0.5.0
 
 - **HiFiPlayer-0.5.0-debug.apk**: installable evaluation build, signed with the development debug key. Android 8.0 / API 26 or newer.
 - **HiFiPlayer-0.5.0-release-unsigned.apk**: unsigned release build. Not installable. Do not sign with a different key expecting an in-place update; see the established-certificate policy in the release workflow.
-- **SHA256SUMS**: verify both artifacts with `sha256sum -c SHA256SUMS` in this directory.
+- **SHA256SUMS**: verify all retained artifacts with `sha256sum -c SHA256SUMS` in this directory.
 
 This snapshot includes EQ/ReplayGain, six PCM visualizers, local AutoEq/output profiles, offline lyrics, AIFF, smart playlists/URI M3U8, output information and three session widgets. See [testing evidence](../../TESTING.md), [feature status](../../FEATURE_STATUS.md) and [phase reports](../../docs/PHASE_REPORTS.md).
 
