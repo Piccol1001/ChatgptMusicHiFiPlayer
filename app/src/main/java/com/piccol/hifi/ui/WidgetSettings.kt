@@ -80,7 +80,7 @@ fun MotionSettings(vm: PlayerViewModel) {
     val visual by vm.visualSettings.collectAsStateWithLifecycle()
     SettingRow(
         "Reduce motion",
-        "Stops decorative rotation and shader animation",
+        "Reduces screen transitions and decorative animation",
         Icons.Rounded.Animation,
         trailing = {
             Switch(visual.reducedMotion, { v -> vm.changeVisual { it.copy(reducedMotion = v) } })

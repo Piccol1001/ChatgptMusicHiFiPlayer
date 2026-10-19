@@ -19,6 +19,55 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28], application = android.app.Application::class)
 class RedesignModelTest {
     @Test
+    fun featureRoutesAndWidgetIntentResolveToThreePrimarySections() {
+        val aliases =
+            mapOf(
+                "eq" to com.piccol.hifi.ui.Screen.EQ,
+                "equalizer" to com.piccol.hifi.ui.Screen.EQ,
+                "audio/equalizer" to com.piccol.hifi.ui.Screen.EQ,
+                "visualizer" to com.piccol.hifi.ui.Screen.VISUALIZER,
+                "audio/visualizer" to com.piccol.hifi.ui.Screen.VISUALIZER,
+                "library/playlists" to com.piccol.hifi.ui.Screen.PLAYLISTS,
+            )
+        aliases.forEach { (route, expected) ->
+            assertEquals(expected, com.piccol.hifi.ui.screenForRoute(route))
+            assertEquals(
+                expected,
+                com.piccol.hifi.ui.screenForIntent(
+                    android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("hifi://$route"),
+                    )
+                ),
+            )
+        }
+        assertEquals(
+            com.piccol.hifi.ui.Screen.PLAYER,
+            com.piccol.hifi.ui.screenForIntent(
+                android.content.Intent().putExtra("open_player", true)
+            ),
+        )
+        assertEquals(com.piccol.hifi.ui.PrimarySection.AUDIO, com.piccol.hifi.ui.Screen.EQ.primary)
+        assertEquals(
+            com.piccol.hifi.ui.PrimarySection.AUDIO,
+            com.piccol.hifi.ui.Screen.VISUALIZER.primary,
+        )
+        assertEquals(
+            com.piccol.hifi.ui.PrimarySection.LIBRARY,
+            com.piccol.hifi.ui.Screen.PLAYLISTS.primary,
+        )
+        assertNull(com.piccol.hifi.ui.screenForRoute("unknown"))
+        assertNull(
+            com.piccol.hifi.ui.screenForIntent(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://visualizer"),
+                )
+            )
+        )
+    }
+
+    @Test
     fun aboutReadsInstalledPackageMetadataRatherThanBuildLabel() {
         val context = RuntimeEnvironment.getApplication() as Context
         @Suppress("DEPRECATION")

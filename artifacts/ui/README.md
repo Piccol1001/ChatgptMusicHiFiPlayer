@@ -1,5 +1,7 @@
 # UI comparison captures
 
+Latest three-section redesign: [27-capture gallery](minimal/README.md) and [implementation report](../../docs/MINIMAL_REDESIGN.md). The `before/` and `current/` images below are retained 0.5.0 and 0.6.0 comparison evidence.
+
 These are Android emulator screenshots, not design mockups. `before/` comes from the original 0.5.0 application. `current/` uses a separate API 30 validation AVD with generated playable FLAC tones and original geometric artwork; the shipped application contains no fixture library. See [the redesign report](../../docs/UI_REDESIGN.md) for capture conditions, rendering limitations and validation results. The final capture test passed; these are functional visual checks, not performance measurements.
 
 | Screen | Before | Redesigned empty/idle | Redesigned populated/playing |

@@ -7,7 +7,7 @@ The application is **HiFi Player**, package `com.piccol.hifi`. Keep its identity
 ## Release procedure
 
 1. Read the current version and all known release records. Audit any additional APKs before releasing; the command rejects unrecorded files in `artifacts/apk`. Include APKs supplied outside this directory in the audit and ledger before invoking the workflow. Build outputs are transient candidates, not releases.
-2. Choose the change type deliberately: **major** for significant architectural changes, **minor** for new app functionality, **patch** for bug fixes/UI refinements. The combined redesign adds appearance options and folder browsing, so its release uses a minor increment; the playback architecture is unchanged. Build count, Git commit count and wall-clock time do not determine versions.
+2. Choose the change type deliberately: **major** for significant architectural changes, **minor** for new app functionality, **patch** for bug fixes/UI refinements. The 0.6.0 redesign added appearance options and folder browsing, so it used a minor increment. The subsequent three-section navigation and layout refinements use PATCH (0.6.1); the playback architecture is unchanged. Build count, Git commit count and wall-clock time do not determine versions.
 3. Add a release-notes JSON file, e.g. `releases/0.6.0.json`, with `features`, `fixes`, and `ui` arrays. Use `"None."` for an unchanged category. Commit reviewed source and notes first when possible. If the source is dirty, that fact is recorded; its HEAD alone does not reproduce uncommitted changes.
 4. Activate the Android toolchain (`source /workspace/.tooling/env.sh` in the prepared cloud), restore the **existing** private debug/update keystore securely if needed, and run:
 

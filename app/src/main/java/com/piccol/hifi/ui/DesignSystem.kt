@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,7 +35,7 @@ val PlayerTypography =
         headlineLarge =
             TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
         headlineMedium =
-            TextStyle(fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold),
+            TextStyle(fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold),
         headlineSmall =
             TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
         titleLarge =
@@ -64,7 +67,7 @@ fun CompactTab(
             .clip(RoundedCornerShape(10.dp))
             .background(
                 if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .16f)
-                else MaterialTheme.colorScheme.surface
+                else Color.Transparent
             )
             .selectable(selected = selected, role = Role.Tab, onClick = onClick)
             .heightIn(min = 48.dp)
@@ -236,4 +239,210 @@ fun artworkAccent(uri: String?, enabled: Boolean, fallback: Color): Color {
         }
     }
     return if (enabled) sampled ?: fallback else fallback
+}
+
+object PlayerSpacing {
+    val screen = 16.dp
+    val gap = 8.dp
+    val section = 24.dp
+    val artworkRadius = 14.dp
+}
+
+@Composable
+fun ScreenHeader(
+    title: String,
+    back: (() -> Unit)? = null,
+    backLabel: String = "Back",
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .statusBarsPadding()
+            .heightIn(min = 56.dp)
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (back != null) IconButton(back) { Icon(Icons.Rounded.ChevronLeft, backLabel) }
+        Text(
+            title,
+            Modifier.weight(1f).padding(horizontal = 8.dp),
+            style = MaterialTheme.typography.headlineMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        actions()
+    }
+}
+
+@Composable
+fun PlayerNavigation(selected: PrimarySection?, open: (PrimarySection) -> Unit) {
+    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = .06f))
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+        PrimarySection.entries.forEach { section ->
+            val active = selected == section
+            val tint =
+                if (active) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            Column(
+                Modifier.weight(1f)
+                    .selectable(active, role = Role.Tab) { open(section) }
+                    .semantics { contentDescription = "Open ${section.label}" }
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    when (section) {
+                        PrimarySection.LIBRARY -> Icons.Outlined.LibraryMusic
+                        PrimarySection.PLAYER -> Icons.Outlined.Album
+                        PrimarySection.AUDIO -> Icons.Outlined.Tune
+                    },
+                    null,
+                    Modifier.size(24.dp),
+                    tint,
+                )
+                Text(
+                    section.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = tint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun LibraryControls(
+    filter: com.piccol.hifi.data.LibraryFilter,
+    playlists: Boolean,
+    search: (String) -> Unit,
+    category: (com.piccol.hifi.data.Category) -> Unit,
+    openPlaylists: () -> Unit,
+    rescan: () -> Unit,
+) {
+    @Composable
+    fun CategoryTab(label: String, selected: Boolean, click: () -> Unit) {
+        CompactTab(
+            label,
+            selected,
+            click,
+            modifier = Modifier.semantics { contentDescription = "Library category $label" },
+        )
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        TextField(
+            filter.search,
+            search,
+            Modifier.fillMaxWidth().padding(horizontal = PlayerSpacing.screen, vertical = 4.dp),
+            singleLine = true,
+            placeholder = {
+                Text(
+                    if (playlists && filter.playlist == null && filter.smart == null)
+                        "Search playlists"
+                    else "Songs, artists, albums",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            leadingIcon = { Icon(Icons.Rounded.Search, null) },
+            trailingIcon = {
+                if (filter.search.isNotEmpty())
+                    IconButton({ search("") }) { Icon(Icons.Rounded.Close, "Clear search") }
+            },
+            shape = RoundedCornerShape(14.dp),
+            colors =
+                TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+        )
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            item {
+                CategoryTab(
+                    "Songs",
+                    !playlists && filter.category == com.piccol.hifi.data.Category.ALL,
+                    { category(com.piccol.hifi.data.Category.ALL) },
+                )
+            }
+            item {
+                CategoryTab(
+                    "Albums",
+                    !playlists && filter.category == com.piccol.hifi.data.Category.ALBUMS,
+                    { category(com.piccol.hifi.data.Category.ALBUMS) },
+                )
+            }
+            item {
+                CategoryTab(
+                    "Artists",
+                    !playlists && filter.category == com.piccol.hifi.data.Category.ARTISTS,
+                    { category(com.piccol.hifi.data.Category.ARTISTS) },
+                )
+            }
+            item { CategoryTab("Playlists", playlists, openPlaylists) }
+            item {
+                CategoryTab(
+                    "Folders",
+                    !playlists && filter.category == com.piccol.hifi.data.Category.FOLDERS,
+                    { category(com.piccol.hifi.data.Category.FOLDERS) },
+                )
+            }
+            item {
+                var more by remember { mutableStateOf(false) }
+                Box {
+                    IconButton({ more = true }) {
+                        Icon(Icons.Rounded.MoreHoriz, "More library views")
+                    }
+                    DropdownMenu(more, { more = false }) {
+                        listOf(
+                                com.piccol.hifi.data.Category.GENRES,
+                                com.piccol.hifi.data.Category.FAVORITES,
+                                com.piccol.hifi.data.Category.ADDED,
+                                com.piccol.hifi.data.Category.RECENT,
+                                com.piccol.hifi.data.Category.MOST,
+                            )
+                            .forEach { view ->
+                                DropdownMenuItem(
+                                    text = { Text(view.label) },
+                                    onClick = {
+                                        category(view)
+                                        more = false
+                                    },
+                                )
+                            }
+                        DropdownMenuItem(
+                            text = { Text("Rescan library") },
+                            onClick = {
+                                rescan()
+                                more = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (
+            !playlists &&
+                filter.category in
+                    listOf(
+                        com.piccol.hifi.data.Category.GENRES,
+                        com.piccol.hifi.data.Category.FAVORITES,
+                        com.piccol.hifi.data.Category.ADDED,
+                        com.piccol.hifi.data.Category.RECENT,
+                        com.piccol.hifi.data.Category.MOST,
+                    )
+        )
+            Text(
+                filter.category.label,
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+    }
 }

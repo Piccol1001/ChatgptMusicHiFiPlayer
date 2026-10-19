@@ -57,7 +57,7 @@ class UiScreenshotsTest {
     private fun deviceWait(condition: () -> Boolean) {
         val deadline = android.os.SystemClock.elapsedRealtime() + 60_000
         while (!condition()) {
-            compose.mainClock.advanceTimeBy(1_000)
+            compose.mainClock.advanceTimeBy(200)
             check(android.os.SystemClock.elapsedRealtime() < deadline) {
                 "Device UI condition timed out"
             }
@@ -65,63 +65,77 @@ class UiScreenshotsTest {
         }
     }
 
-    private fun deviceClick(label: String, description: Boolean = false) {
-        println("UI_CLICK: $label")
-        compose.mainClock.advanceTimeBy(1_000)
-        deviceWait {
-            val found = node {
-                (if (description) it.contentDescription else it.text)
-                    ?.toString()
-                    ?.contains(label) == true
-            }
-            val bounds = android.graphics.Rect()
-            found?.getBoundsInScreen(bounds)
-            if (
-                found != null &&
-                    !bounds.isEmpty &&
-                    bounds.centerX() in
-                        0 until compose.activity.resources.displayMetrics.widthPixels
-            ) {
-                shell("input tap ${bounds.centerX()} ${bounds.centerY()}")
-                true
-            } else {
-                val right =
-                    android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
-                        .ACTION_SCROLL_RIGHT
-                        .id
-                node { n -> n.actionList.any { it.id == right } }?.performAction(right)
-                false
-            }
-        }
-        compose.mainClock.advanceTimeBy(1_000)
-        Thread.sleep(500)
-    }
-
     private fun nav(label: String) {
-        if (livePlayback) deviceClick("Open $label", true)
-        else compose.onNodeWithContentDescription("Open $label").performClick()
+        val primary =
+            when (label) {
+                "Playlists" -> "Library"
+                "Equalizer",
+                "Visualizer" -> "Audio"
+                else -> label
+            }
+        val secondary =
+            when (label) {
+                "Playlists" -> "Library category Playlists"
+                "Equalizer",
+                "Visualizer" -> "Audio tab $label"
+                else -> null
+            }
+        if (livePlayback) {
+            // Interaction is covered by PlayerUiTest and actual launch dispatch by
+            // NavigationEntryPointTest.
+            // Use the app's public intent contract to prepare captures without native
+            // touch/test-clock races.
+            instrumentation.runOnMainSync {
+                instrumentation.callActivityOnNewIntent(
+                    compose.activity,
+                    android.content
+                        .Intent(compose.activity.intent)
+                        .putExtra("route", label.lowercase()),
+                )
+            }
+            compose.mainClock.advanceTimeBy(200)
+            Thread.sleep(300)
+            compose.mainClock.advanceTimeBy(200)
+        } else {
+            compose.onNodeWithContentDescription("Open $primary").performClick()
+            secondary?.let {
+                val target = compose.onNodeWithContentDescription(it)
+                if (label == "Playlists") target.performScrollTo()
+                target.performClick()
+            }
+            compose.onNodeWithContentDescription("Open $primary").assertIsSelected()
+            compose.mainClock.advanceTimeBy(200)
+        }
     }
 
     private fun capture(name: String) {
+        if (
+            InstrumentationRegistry.getArguments().getString("layoutRefresh") == "true" &&
+                name.take(2) !in setOf("08", "10", "11", "12", "15", "16", "18", "99")
+        )
+            return
+
         if (
             InstrumentationRegistry.getArguments().getString("eqRefresh") == "true" &&
                 name.take(2) !in setOf("10", "11", "12", "13", "14", "15", "16", "17", "18", "99")
         )
             return
-        println("UI_CAPTURE: $name")
+        println(
+            "UI_CAPTURE: $name widthDp=${compose.activity.resources.configuration.screenWidthDp} fontScale=${compose.activity.resources.configuration.fontScale}"
+        )
         deviceWait {
             instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() ==
                 context.packageName
         }
         // Native accessibility actions still need explicit frames from the Compose test clock.
-        compose.mainClock.advanceTimeBy(1_000)
+        compose.mainClock.advanceTimeBy(200)
         // Continuous PCM/progress frames need not become Compose-idle to be captured.
         instrumentation.runOnMainSync { compose.activity.window.decorView.apply { invalidate() } }
         Thread.sleep(700)
         compose.mainClock.advanceTimeBy(64)
         Thread.sleep(300)
-        shell("mkdir -p /sdcard/Download/hifi-ui-validation/v3")
-        shell("screencap -p /sdcard/Download/hifi-ui-validation/v3/$name.png")
+        shell("mkdir -p /sdcard/Download/hifi-ui-validation/minimal")
+        shell("screencap -p /sdcard/Download/hifi-ui-validation/minimal/$name.png")
     }
 
     private fun shell(command: String): String =
@@ -146,6 +160,12 @@ class UiScreenshotsTest {
                 .isNotEmpty()
         }
         nav("Library")
+        if (!app.scanner.hasMediaPermission()) {
+            compose.onNodeWithText("Your music, your way").assertExists()
+            capture("00-library-onboarding")
+            shell("pm grant ${context.packageName} android.permission.READ_EXTERNAL_STORAGE")
+            runBlocking { app.scanner.scan() }
+        }
         compose.waitUntil(60_000) {
             compose.onAllNodesWithText("No music found").fetchSemanticsNodes().isNotEmpty()
         }
@@ -157,7 +177,7 @@ class UiScreenshotsTest {
         compose.onNodeWithText("Ready to listen?").assertExists()
         capture("03-playing-empty")
         nav("Visualizer")
-        compose.onNodeWithText("Play music to start visualizing").assertExists()
+        compose.onNodeWithText("Play music to see your sound").assertExists()
         capture("04-visualizer-idle")
         val directory = File(context.filesDir, "integration-test/ui-design").apply { mkdirs() }
         val tracks =
@@ -207,6 +227,7 @@ class UiScreenshotsTest {
                 )
             }
         val priorDsp = runBlocking { app.dsp.settings.first() }
+        val priorVisual = runBlocking { app.visualSettings.settings.first() }
         val ids = mutableListOf<Long>()
         lateinit var controller: MediaController
         var future: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
@@ -277,8 +298,6 @@ class UiScreenshotsTest {
             }
             livePlayback = true
             nav("Playing")
-            capture("08-now-playing-before-wait")
-            deviceWait { node { it.contentDescription?.toString() == "Pause" } != null }
             capture("08-now-playing")
             nav("Library")
             capture("09-library-mini-player")
@@ -297,24 +316,48 @@ class UiScreenshotsTest {
                 }
             }
             nav("Equalizer")
-            deviceClick("10 bands")
+            runBlocking { app.dsp.update { it.copy(mode = EqMode.TEN) } }
             capture("10-eq-ten")
-            deviceClick("31 bands")
+            runBlocking { app.dsp.update { it.copy(mode = EqMode.THIRTY_ONE) } }
             capture("11-eq-thirty-one")
-            deviceClick("Parametric")
+            runBlocking { app.dsp.update { it.copy(mode = EqMode.PARAMETRIC) } }
             capture("12-eq-parametric")
             nav("Visualizer")
             deviceWait { app.pcmTap.sequence > 10 }
-            capture("13-visualizer-playing")
+            listOf(
+                    "Spectrum",
+                    "Oscilloscope",
+                    "Stereo Meter",
+                    "Spectrogram",
+                    "Circular",
+                    "Reactive",
+                )
+                .forEachIndexed { i, mode ->
+                    runBlocking {
+                        app.visualSettings.update {
+                            it.copy(mode = com.piccol.hifi.visualization.VisualMode.entries[i])
+                        }
+                    }
+                    if (i == 5) Thread.sleep(2000)
+                    capture("13-${i+1}-visualizer-${mode.lowercase().replace(' ', '-')}")
+                }
             nav("Library")
-            shell("wm size 840x1680")
-            deviceWait { compose.activity.resources.configuration.screenWidthDp <= 330 }
-            capture("14-library-small")
+            shell("wm size 945x1920")
+            deviceWait { compose.activity.resources.configuration.screenWidthDp in 359..361 }
+            capture("14-library-360dp")
+            shell("wm size 1082x1920")
+            deviceWait { compose.activity.resources.configuration.screenWidthDp in 411..413 }
+            capture("14b-library-412dp")
+            shell("wm size 1600x2560")
+            deviceWait { compose.activity.resources.configuration.screenWidthDp >= 600 }
+            capture("14c-library-large-screen")
+            shell("wm size 945x1920")
+            deviceWait { compose.activity.resources.configuration.screenWidthDp in 359..361 }
             shell("settings put system font_scale 1.5")
             deviceWait { compose.activity.resources.configuration.fontScale >= 1.4f }
             capture("15-library-large-font")
             nav("Equalizer")
-            deviceClick("31 bands")
+            runBlocking { app.dsp.update { it.copy(mode = EqMode.THIRTY_ONE) } }
             capture("16-eq-large-font")
             shell("settings put system font_scale 1.0")
             shell("wm size reset")
@@ -329,6 +372,10 @@ class UiScreenshotsTest {
             capture("17-now-playing-landscape")
             nav("Equalizer")
             capture("18-eq-landscape")
+            compose.runOnUiThread { controller.pause() }
+            deviceWait { !app.playbackIsPlaying.value }
+            compose.onNodeWithContentDescription("Settings").performClick()
+            capture("19-settings")
         } finally {
             runCatching { capture("99-final-state") }
             shell("settings put system font_scale 1.0")
@@ -347,6 +394,7 @@ class UiScreenshotsTest {
                 }
             runBlocking {
                 app.dsp.update { priorDsp }
+                app.visualSettings.update { priorVisual }
                 ids.forEach { app.database.music().deletePlaylist(it) }
                 app.database.runInTransaction {
                     tracks.forEach { t ->

@@ -21,15 +21,15 @@ In this prepared Codex environment, first run `source /workspace/.tooling/env.sh
 
 ## Redesigned interface
 
-Compact browsing, album/playlist cards, folder hierarchy, an artwork-led player, a persistent mini-player, focused EQ/visualizer controls and grouped Settings preserve the existing playback service. Appearance offers black/dark-gray backgrounds, local artwork accents and artwork shape/gradient controls. See the [redesign report and screenshots](docs/UI_REDESIGN.md).
+Compact browsing, album/playlist cards, folder hierarchy, an artwork-led player, a persistent mini-player, focused EQ/visualizer controls and grouped Settings preserve the existing playback service. Appearance offers black/dark-gray backgrounds, local artwork accents and artwork shape/gradient controls. The primary sections are Library, Playing and Audio; playlists are inside Library, with Equalizer/Visualizer tabs inside Audio. See the [current redesign report](docs/MINIMAL_REDESIGN.md) and the [previous gallery](docs/UI_REDESIGN.md).
 
 ## Use
 
 1. Allow music access or choose a music folder. Multiple persisted SAF folders are supported; Android can restrict storage-root selection. Browse/search/sort the paged library, mark favorites and build playlists.
 2. Open Playing for transport, seek, shuffle, repeat, queue editing, audio information and lyrics. Notification/headset controls share the same media session. The saved queue restores **paused**; abrupt process death can lose up to five seconds of position.
-3. In Equalizer, choose 10-band, 31-band or parametric processing; edit numeric values or drag the response controls. There are 58 original presets, custom preset CRUD/favorites/recents and local JSON import/export. ReplayGain reads supported real metadata.
+3. In Audio → Equalizer, choose 10-band, 31-band or parametric processing; edit numeric values or drag the response controls. There are 58 original presets, custom preset CRUD/favorites/recents and local JSON import/export. ReplayGain reads supported real metadata.
 4. Open AutoEq/output profiles to import compatible local text, preview and save a correction. Assign a default or an output category. Editing an active profile preserves separately stored personal EQ. No headphone dataset or network download is bundled.
-5. Open Visualizer for measured spectrum, waveform, stereo meters, spectrogram, circular spectrum and three original shader effects. FFT/FPS/quality/color settings, fullscreen and reduced decorative motion are available. Analysis suspends when hidden or paused.
+5. Open Audio → Visualizer for measured spectrum, waveform, stereo meters, spectrogram, circular spectrum and three original shader effects. FFT/FPS/quality/color settings, fullscreen and reduced decorative motion are available. Analysis suspends when hidden or paused.
 6. Import `.lrc` or plain text lyrics, use compatible embedded lyrics, or authorize a music folder for sibling-file matching. Timed lines highlight/scroll and can seek the existing player.
 7. Add Compact, Standard or Expanded widgets from Settings or the launcher's widget picker. Theme/accent settings apply to widgets; artwork/progress opens Now Playing.
 8. Create smart playlist rules for metadata, play count, date, favorites and format. M3U8 import/export uses exact indexed content URIs; portable filesystem paths are reported as unresolved.
@@ -46,7 +46,7 @@ The play-collection action queues up to 1,000 matching songs and reports that ca
 
 The DSP/output path converts to **16-bit PCM**. High-resolution source decoding does not establish 24-bit hardware output. The output screen distinguishes source, processing, AudioTrack client format and device-reported capabilities. No exclusive, direct USB or bit-perfect mode is offered.
 
-FLAC transition frame totals and AudioTrack reuse were verified. Sample-exact MP3 gapless remains incomplete on the tested API 28 Google decoder: diagnostics found 22–551 boundary frames and a terminal decoder tail. Its strict regression is explicitly skipped on that known decoder combination and can be forced as documented in TESTING.md. Crossfade and CUE are not implemented.
+FLAC transition frame totals and AudioTrack reuse were verified. Sample-exact MP3 gapless remains incomplete on the tested API 28 Google decoder: diagnostics found 22–551 boundary frames and a terminal decoder tail. Its strict regression is explicitly skipped on that known decoder combination and can be forced as documented in TESTING.md. The strict generated MP3 transition fixtures passed on the isolated API 30 image; this does not remove the API 28 limitation. Crossfade and CUE are not implemented.
 
 ## Architecture
 

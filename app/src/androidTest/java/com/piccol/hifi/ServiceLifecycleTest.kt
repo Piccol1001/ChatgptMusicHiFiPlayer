@@ -108,6 +108,13 @@ class ServiceLifecycleTest {
                 assertFalse(restored.isPlaying)
                 assertEquals(uri.toString(), restored.currentMediaItem!!.mediaId)
                 assertNull(restored.playerError)
+                // Replay is verified with no foreground MainActivity and the real service alive.
+                assertTrue(
+                    androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                        .none { it is MainActivity }
+                )
+                assertTrue(app.serviceRunning.value)
                 restored.play()
             }
             await { restored.isPlaying && restored.currentPosition > 2100 }

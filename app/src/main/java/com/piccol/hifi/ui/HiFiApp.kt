@@ -8,12 +8,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,19 +26,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,33 +48,20 @@ import com.piccol.hifi.data.*
 import com.piccol.hifi.library.readLimited
 import kotlinx.coroutines.*
 
-private val Ink = Color(0xFF080A0F)
-private val Surface = Color(0xFF151922)
-private val Muted = Color(0xFFA4ADBF)
-private val accents = listOf(Color(0xFF58A6FF), Color(0xFF7BE0C3), Color(0xFFCCA3FF))
-
-private enum class Screen(val label: String, val icon: ImageVector) {
-    LIBRARY("Library", Icons.Rounded.LibraryMusic),
-    PLAYLISTS("Playlists", Icons.AutoMirrored.Rounded.QueueMusic),
-    PLAYER("Playing", Icons.Rounded.Album),
-    EQ("Equalizer", Icons.Rounded.Tune),
-    VISUALIZER("Visualizer", Icons.Rounded.GraphicEq),
-}
+private val Ink = Color(0xFF080A0E)
+private val Surface = Color(0xFF171B23)
+private val Muted = Color(0xFFA4ADBC)
+private val accents = listOf(Color(0xFF5AA6FF), Color(0xFF7BE0C3), Color(0xFFCCA3FF))
 
 @OptIn(ExperimentalMaterial3Api::class)
 @UnstableApi
 @Composable
-fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: () -> Unit = {}) {
+fun HiFiApp(vm: PlayerViewModel, openRoute: Screen? = null, onRouteOpened: () -> Unit = {}) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val playback by vm.playback.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val visualSettings by vm.visualSettings.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val eqState by vm.dspSettings.collectAsStateWithLifecycle()
-    var searchRequest by remember { mutableIntStateOf(0) }
-    var createRequest by remember { mutableIntStateOf(0) }
-    var importRequest by remember { mutableIntStateOf(0) }
-    var presetRequest by remember { mutableIntStateOf(0) }
-    var visualOptionsRequest by remember { mutableIntStateOf(0) }
     var settingsPage by rememberSaveable { mutableStateOf<String?>(null) }
     val accent =
         artworkAccent(
@@ -85,8 +69,10 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
             settings.artworkColor,
             accents[settings.accent.coerceIn(0, 2)],
         )
-    val background = if (settings.amoled) Color.Black else Color(0xFF171B23)
+    val background = if (settings.amoled) Color(0xFF080A0E) else Color(0xFF171B23)
     var screen by rememberSaveable { mutableStateOf(Screen.LIBRARY) }
+    var audioTab by rememberSaveable { mutableStateOf(Screen.EQ) }
+    var audioReturn by rememberSaveable { mutableStateOf(Screen.LIBRARY) }
     var visualFullScreen by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var queue by rememberSaveable { mutableStateOf(false) }
@@ -94,13 +80,30 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
     var output by rememberSaveable { mutableStateOf(false) }
     var lyrics by rememberSaveable { mutableStateOf(false) }
     var info by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(openPlayer) {
-        if (openPlayer) {
-            screen = Screen.PLAYER
-            showSettings = false
-            visualFullScreen = false
-            onPlayerOpened()
+    var visualOptionsRequest by remember { mutableIntStateOf(0) }
+    fun navigate(destination: Screen) {
+        if (destination.primary == PrimarySection.AUDIO) {
+            if (screen.primary != PrimarySection.AUDIO)
+                audioReturn = if (screen == Screen.PLAYER) Screen.PLAYER else Screen.LIBRARY
+            audioTab = destination
         }
+        queue = false
+        profiles = false
+        output = false
+        lyrics = false
+        info = false
+        screen = destination
+        showSettings = false
+        visualFullScreen = false
+    }
+    LaunchedEffect(openRoute) {
+        openRoute?.let {
+            navigate(it)
+            onRouteOpened()
+        }
+    }
+    BackHandler(!showSettings && screen != Screen.LIBRARY && !visualFullScreen) {
+        navigate(if (screen.primary == PrimarySection.AUDIO) audioReturn else Screen.LIBRARY)
     }
     BackHandler(showSettings) {
         if (settingsPage != null) settingsPage = null else showSettings = false
@@ -111,17 +114,17 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
             primary = accent,
             onPrimary = Color(0xFF07111E),
             background = background,
-            surface = Surface,
-            surfaceContainer = Surface,
-            onSurface = Color(0xFFF4F6FA),
-            onSurfaceVariant = Muted,
+            surface = Color(0xFF171B23),
+            surfaceContainer = Color(0xFF171B23),
+            onSurface = Color(0xFFF5F7FA),
+            onSurfaceVariant = Color(0xFFA4ADBC),
             error = Color(0xFFFF6B6B),
-            onBackground = Color(0xFFF4F6FA),
+            onBackground = Color(0xFFF5F7FA),
             secondary = Muted,
-            secondaryContainer = Color(0xFF202633),
-            onSecondaryContainer = Color(0xFFF4F6FA),
-            surfaceVariant = Color(0xFF202633),
-            surfaceContainerHigh = Color(0xFF202633),
+            secondaryContainer = Color(0xFF222834),
+            onSecondaryContainer = Color(0xFFF5F7FA),
+            surfaceVariant = Color(0xFF222834),
+            surfaceContainerHigh = Color(0xFF222834),
             outline = Color(0xFF333D4E),
         )
     val musicAccess =
@@ -132,7 +135,7 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val folderPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) {
+            if (uri != null)
                 try {
                     context.contentResolver.takePersistableUriPermission(
                         uri,
@@ -143,7 +146,6 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
                     vm.message.value =
                         "This folder provider could not retain access. Choose another folder."
                 }
-            }
         }
     LaunchedEffect(message) {
         message?.let {
@@ -161,80 +163,60 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
                 else WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
             topBar = {
                 if (!visualFullScreen)
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .background(background)
-                            .statusBarsPadding()
-                            .heightIn(min = 60.dp)
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (showSettings || screen == Screen.PLAYER)
-                            IconButton({
-                                if (showSettings) {
-                                    if (settingsPage != null) settingsPage = null
-                                    else showSettings = false
-                                } else screen = Screen.LIBRARY
-                            }) {
-                                Icon(
-                                    Icons.Rounded.KeyboardArrowDown,
-                                    if (showSettings) "Back" else "Minimize player",
-                                )
-                            }
-                        Text(
+                    ScreenHeader(
+                        title =
                             if (showSettings) settingsPage ?: "Settings"
-                            else if (screen == Screen.PLAYER) "Now Playing" else screen.label,
-                            Modifier.weight(1f).padding(start = 8.dp),
-                            style =
-                                if (showSettings && settingsPage != null)
-                                    MaterialTheme.typography.titleLarge
-                                else MaterialTheme.typography.headlineMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                            else if (screen == Screen.PLAYER) "Now Playing"
+                            else screen.primary.label,
+                        back =
+                            if (showSettings || screen == Screen.PLAYER)
+                                ({
+                                    if (showSettings) {
+                                        if (settingsPage != null) settingsPage = null
+                                        else showSettings = false
+                                    } else navigate(Screen.LIBRARY)
+                                })
+                            else null,
+                        backLabel = if (showSettings) "Back" else "Minimize player",
+                    ) {
                         if (!showSettings) {
-                            when (screen) {
-                                Screen.LIBRARY -> {
-                                    IconButton({ searchRequest++ }) {
-                                        Icon(Icons.Rounded.Search, "Search library")
-                                    }
-                                    IconButton(vm::refresh) {
-                                        Icon(Icons.Rounded.Refresh, "Rescan library")
-                                    }
+                            if (screen == Screen.PLAYER)
+                                IconButton({ queue = true }) {
+                                    Icon(Icons.AutoMirrored.Rounded.QueueMusic, "Playback queue")
                                 }
-                                Screen.PLAYLISTS -> {
-                                    IconButton({ createRequest++ }) {
-                                        Icon(Icons.Rounded.Add, "Create playlist")
-                                    }
-                                    IconButton({ importRequest++ }) {
-                                        Icon(Icons.Rounded.FileOpen, "Import playlist")
-                                    }
+                            if (screen == Screen.VISUALIZER)
+                                IconButton({ visualFullScreen = true }) {
+                                    Icon(Icons.Rounded.Fullscreen, "Fullscreen visualizer")
                                 }
-                                Screen.PLAYER ->
-                                    IconButton({ queue = true }) {
-                                        Icon(
-                                            Icons.AutoMirrored.Rounded.QueueMusic,
-                                            "Playback queue",
+                            if (screen.primary == PrimarySection.AUDIO) {
+                                var more by remember { mutableStateOf(false) }
+                                Box {
+                                    IconButton({ more = true }) {
+                                        Icon(Icons.Rounded.MoreVert, "Audio options")
+                                    }
+                                    DropdownMenu(more, { more = false }) {
+                                        DropdownMenuItem(
+                                            text = { Text("AutoEq & output profiles") },
+                                            onClick = {
+                                                more = false
+                                                profiles = true
+                                            },
                                         )
-                                    }
-                                Screen.EQ -> {
-                                    Switch(
-                                        eqState.enabled,
-                                        { enabled -> vm.changeDsp { it.copy(enabled = enabled) } },
-                                        Modifier.semantics {
-                                            contentDescription = "Equalizer enabled"
-                                        },
-                                    )
-                                    IconButton({ presetRequest++ }) {
-                                        Icon(Icons.Rounded.LibraryMusic, "Choose EQ preset")
-                                    }
-                                }
-                                Screen.VISUALIZER -> {
-                                    IconButton({ visualFullScreen = true }) {
-                                        Icon(Icons.Rounded.Fullscreen, "Fullscreen visualizer")
-                                    }
-                                    IconButton({ visualOptionsRequest++ }) {
-                                        Icon(Icons.Rounded.Tune, "Visualization settings")
+                                        DropdownMenuItem(
+                                            text = { Text("Audio output information") },
+                                            onClick = {
+                                                more = false
+                                                output = true
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Advanced audio settings") },
+                                            onClick = {
+                                                more = false
+                                                showSettings = true
+                                                settingsPage = "Audio Output"
+                                            },
+                                        )
                                     }
                                 }
                             }
@@ -248,61 +230,23 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
                     }
             },
             bottomBar = {
-                if (!visualFullScreen && !showSettings)
+                if (!visualFullScreen)
                     Column(Modifier.background(background).navigationBarsPadding()) {
-                        if (playback.item != null && screen != Screen.PLAYER)
-                            MiniPlayer(playback, { screen = Screen.PLAYER }, vm::toggle, vm::next)
-                        HorizontalDivider(color = Color.White.copy(alpha = .06f))
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp)
-                        ) {
-                            Screen.entries.forEach { destination ->
-                                val active = screen == destination
-                                Column(
-                                    Modifier.weight(1f)
-                                        .selectable(active, role = Role.Tab) {
-                                            screen = destination
-                                            showSettings = false
-                                            visualFullScreen = false
-                                        }
-                                        .semantics {
-                                            contentDescription = "Open ${destination.label}"
-                                        }
-                                        .padding(vertical = 10.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                ) {
-                                    Icon(
-                                        destination.icon,
-                                        null,
-                                        Modifier.size(23.dp),
-                                        tint = if (active) accent else Muted,
-                                    )
-                                    Text(
-                                        destination.label,
-                                        modifier =
-                                            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        fontSize = 10.sp,
-                                        lineHeight = 14.sp,
-                                        fontWeight =
-                                            if (active) FontWeight.SemiBold else FontWeight.Normal,
-                                        color = if (active) accent else Muted,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
+                        if (playback.item != null && (screen != Screen.PLAYER || showSettings))
+                            MiniPlayer(playback, { navigate(Screen.PLAYER) }, vm::toggle, vm::next)
+                        PlayerNavigation(if (showSettings) null else screen.primary) { section ->
+                            navigate(
+                                when (section) {
+                                    PrimarySection.LIBRARY -> Screen.LIBRARY
+                                    PrimarySection.PLAYER -> Screen.PLAYER
+                                    PrimarySection.AUDIO -> audioTab
                                 }
-                            }
+                            )
                         }
                     }
             },
         ) { padding ->
-            Box(
-                Modifier.fillMaxSize()
-                    .padding(padding)
-                    .imePadding()
-                    .then(if (showSettings) Modifier.navigationBarsPadding() else Modifier)
-            ) {
+            Box(Modifier.fillMaxSize().padding(padding)) {
                 if (showSettings)
                     SettingsScreen(
                         vm,
@@ -315,62 +259,86 @@ fun HiFiApp(vm: PlayerViewModel, openPlayer: Boolean = false, onPlayerOpened: ()
                         { output = true },
                         settingsPage,
                         { settingsPage = it },
-                        {
-                            showSettings = false
-                            screen = Screen.EQ
-                        },
-                        {
-                            showSettings = false
-                            screen = Screen.VISUALIZER
-                        },
+                        { navigate(Screen.EQ) },
+                        { navigate(Screen.VISUALIZER) },
                     )
                 else
-                    when (screen) {
-                        Screen.LIBRARY ->
-                            LibraryScreen(
-                                vm,
-                                {
-                                    musicAccess.launch(
-                                        if (Build.VERSION.SDK_INT >= 33)
-                                            Manifest.permission.READ_MEDIA_AUDIO
-                                        else Manifest.permission.READ_EXTERNAL_STORAGE
-                                    )
-                                },
-                                { folderPicker.launch(null) },
-                                searchRequest,
-                            )
-                        Screen.PLAYLISTS ->
-                            PlaylistsScreen(
-                                vm,
-                                { screen = Screen.LIBRARY },
-                                createRequest,
-                                importRequest,
-                            )
-                        Screen.PLAYER ->
-                            NowPlaying(
-                                vm,
-                                playback,
-                                settings.technicalInfo,
-                                { queue = true },
-                                { info = true },
-                                { lyrics = true },
-                                { screen = Screen.EQ },
-                                { screen = Screen.VISUALIZER },
-                                { screen = Screen.LIBRARY },
-                            )
-                        Screen.EQ -> EqualizerScreen(vm, presetRequest) { profiles = true }
-                        Screen.VISUALIZER ->
-                            VisualizerScreen(
-                                vm,
-                                visualFullScreen,
-                                visualOptionsRequest,
-                                {
-                                    visualFullScreen = false
-                                    screen = Screen.LIBRARY
-                                },
+                    Column(Modifier.fillMaxSize()) {
+                        if (screen.primary == PrimarySection.AUDIO && !visualFullScreen) {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                visualFullScreen = it
+                                CompactTab(
+                                    "Equalizer",
+                                    screen == Screen.EQ,
+                                    { navigate(Screen.EQ) },
+                                    modifier =
+                                        Modifier.weight(1f).semantics {
+                                            contentDescription = "Audio tab Equalizer"
+                                        },
+                                )
+                                CompactTab(
+                                    "Visualizer",
+                                    screen == Screen.VISUALIZER,
+                                    { navigate(Screen.VISUALIZER) },
+                                    modifier =
+                                        Modifier.weight(1f).semantics {
+                                            contentDescription = "Audio tab Visualizer"
+                                        },
+                                )
                             }
+                        }
+                        androidx.compose.animation.Crossfade(
+                            targetState = screen,
+                            animationSpec =
+                                androidx.compose.animation.core.tween(
+                                    if (visualSettings.reducedMotion) 0 else 120
+                                ),
+                            modifier = Modifier.weight(1f),
+                            label = "Destination",
+                        ) { destination ->
+                            when (destination) {
+                                Screen.LIBRARY,
+                                Screen.PLAYLISTS ->
+                                    LibraryScreen(
+                                        vm,
+                                        {
+                                            musicAccess.launch(
+                                                if (Build.VERSION.SDK_INT >= 33)
+                                                    Manifest.permission.READ_MEDIA_AUDIO
+                                                else Manifest.permission.READ_EXTERNAL_STORAGE
+                                            )
+                                        },
+                                        { folderPicker.launch(null) },
+                                        destination == Screen.PLAYLISTS,
+                                        { navigate(if (it) Screen.PLAYLISTS else Screen.LIBRARY) },
+                                    )
+                                Screen.PLAYER ->
+                                    NowPlaying(
+                                        vm,
+                                        playback,
+                                        settings.technicalInfo,
+                                        { queue = true },
+                                        { info = true },
+                                        { lyrics = true },
+                                        { navigate(Screen.EQ) },
+                                        { navigate(Screen.VISUALIZER) },
+                                        { navigate(Screen.LIBRARY) },
+                                    )
+                                Screen.EQ -> EqualizerScreen(vm, 0) { profiles = true }
+                                Screen.VISUALIZER ->
+                                    VisualizerScreen(
+                                        vm,
+                                        visualFullScreen,
+                                        visualOptionsRequest,
+                                        { navigate(Screen.LIBRARY) },
+                                    ) {
+                                        visualFullScreen = it
+                                    }
+                            }
+                        }
                     }
             }
         }
@@ -407,7 +375,8 @@ private fun LibraryScreen(
     vm: PlayerViewModel,
     requestAccess: () -> Unit,
     chooseFolder: () -> Unit,
-    searchRequest: Int = 0,
+    playlistsView: Boolean = false,
+    chooseView: (Boolean) -> Unit = {},
 ) {
     val filter by vm.filter.collectAsStateWithLifecycle()
     val groups by vm.libraryGroups.collectAsStateWithLifecycle()
@@ -419,12 +388,41 @@ private fun LibraryScreen(
     val focus = remember { FocusRequester() }
     var folderPrefix by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(filter.category) { folderPrefix = "" }
-    LaunchedEffect(searchRequest) {
-        if (searchRequest > 0) {
-            libraryState.scrollToItem(0)
-            withFrameNanos {}
-            focus.requestFocus()
+    val collection = filter.group != null || filter.playlist != null || filter.smart != null
+    BackHandler(collection || folderPrefix.isNotEmpty()) {
+        if (folderPrefix.isNotEmpty()) folderPrefix = folderPrefix.substringBeforeLast('/', "")
+        else {
+            vm.filter.value =
+                filter.copy(group = null, playlist = null, smart = null, smartId = null)
+            if (filter.playlist != null || filter.smart != null) chooseView(true)
         }
+    }
+    val header: @Composable () -> Unit = {
+        LibraryControls(
+            filter,
+            playlistsView || filter.playlist != null || filter.smart != null,
+            { query -> vm.filter.value = filter.copy(search = query) },
+            { category ->
+                vm.filter.value =
+                    filter.copy(
+                        category = category,
+                        group = null,
+                        playlist = null,
+                        smart = null,
+                        smartId = null,
+                    )
+                chooseView(false)
+            },
+            {
+                vm.filter.value = LibraryFilter(search = filter.search)
+                chooseView(true)
+            },
+            vm::refresh,
+        )
+    }
+    if (playlistsView) {
+        PlaylistsScreen(vm, { chooseView(false) }, query = filter.search, header = header)
+        return
     }
     val grouping =
         filter.category in
@@ -442,72 +440,18 @@ private fun LibraryScreen(
         contentPadding = PaddingValues(bottom = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            TextField(
-                filter.search,
-                { vm.filter.value = filter.copy(search = it) },
-                Modifier.fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .focusRequester(focus),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                placeholder = { Text("Songs, artists, albums") },
-                trailingIcon = {
-                    if (filter.search.isNotEmpty())
-                        IconButton({ vm.filter.value = filter.copy(search = "") }) {
-                            Icon(Icons.Rounded.Close, "Clear search")
-                        }
-                },
-                shape = RoundedCornerShape(14.dp),
-                colors =
-                    TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                    ),
-            )
-        }
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            androidx.compose.foundation.lazy.LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(Category.entries) { c ->
-                    CompactTab(
-                        c.label,
-                        filter.category == c && filter.playlist == null && filter.smart == null,
-                        {
-                            vm.filter.value =
-                                filter.copy(
-                                    category = c,
-                                    group = null,
-                                    playlist = null,
-                                    smart = null,
-                                    smartId = null,
-                                )
-                        },
-                    )
-                }
-            }
-        }
+        item(span = { GridItemSpan(maxLineSpan) }) { header() }
         if (!vm.scanner.hasMediaPermission() && folders.isEmpty())
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    Text(
-                        "Your music stays on your device",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Muted,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(requestAccess) { Text("Grant Music Access") }
-                        TextButton(
-                            chooseFolder,
-                            colors = ButtonDefaults.textButtonColors(contentColor = Muted),
-                        ) {
-                            Text("Choose Folder")
-                        }
-                    }
+                MusicEmptyState(
+                    "Your music, your way",
+                    "Choose a music folder or allow access to discover songs stored on your device.",
+                    "Allow Music Access",
+                    requestAccess,
+                    Icons.Rounded.LibraryMusic,
+                )
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    TextButton(chooseFolder) { Text("Choose Folder") }
                 }
             }
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -735,7 +679,10 @@ private fun LibraryScreen(
                 )
             }
         else if (
-            tracks.itemCount == 0 && tracks.loadState.refresh !is LoadState.Loading && !scan.running
+            tracks.itemCount == 0 &&
+                tracks.loadState.refresh !is LoadState.Loading &&
+                !scan.running &&
+                (vm.scanner.hasMediaPermission() || folders.isNotEmpty())
         )
             item(span = { GridItemSpan(maxLineSpan) }) {
                 MusicEmptyState(
@@ -834,7 +781,8 @@ private fun TrackRow(track: Track, favorite: Boolean, vm: PlayerViewModel, playl
                 }
             }
         },
-        modifier = Modifier.clickable { vm.play(track) },
+        modifier =
+            Modifier.combinedClickable(onClick = { vm.play(track) }, onLongClick = { menu = true }),
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
     )
     if (addToPlaylist)
@@ -843,7 +791,7 @@ private fun TrackRow(track: Track, favorite: Boolean, vm: PlayerViewModel, playl
             confirmButton = { TextButton(onClick = { addToPlaylist = false }) { Text("Done") } },
             title = { Text("Add to playlist") },
             text = {
-                if (playlists.isEmpty()) Text("Create a playlist in the Playlists tab first.")
+                if (playlists.isEmpty()) Text("Create a playlist in Library → Playlists first.")
                 else
                     LazyColumn {
                         items(playlists, key = { it.id }) { p ->
@@ -960,7 +908,7 @@ private fun NowPlaying(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             MusicEmptyState(
                 "Ready to listen?",
-                "Choose music from your library to start playing.",
+                "Choose a song from your library.",
                 "Browse Library",
                 browse,
             )
@@ -987,7 +935,7 @@ private fun NowPlaying(
         val artSize =
             if (landscape) minOf(maxWidth * .4f, maxHeight - 32.dp).coerceAtLeast(96.dp)
             else
-                minOf(maxWidth * .8f, (maxHeight - 320.dp).coerceAtLeast(160.dp))
+                minOf(maxWidth * .8f, (maxHeight - 352.dp).coerceAtLeast(144.dp))
                     .coerceAtMost(380.dp)
         val art: @Composable () -> Unit = {
             Artwork(
@@ -1004,7 +952,7 @@ private fun NowPlaying(
                 onClick = info,
             ) {
                 Row(
-                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -1017,6 +965,13 @@ private fun NowPlaying(
                                     },
                                     source.bits?.let { "$it-bit" },
                                     source.rate?.let { "${it/1000.0} kHz" },
+                                    source.channels?.let {
+                                        when (it) {
+                                            1 -> "Mono"
+                                            2 -> "Stereo"
+                                            else -> "$it channels"
+                                        }
+                                    },
                                 )
                                 .joinToString(" · ")
                                 .ifBlank { "Audio information" }
@@ -1283,6 +1238,8 @@ private fun PlaylistsScreen(
     open: () -> Unit,
     createRequest: Int = 0,
     importRequest: Int = 0,
+    query: String = "",
+    header: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1344,20 +1301,24 @@ private fun PlaylistsScreen(
     LaunchedEffect(importRequest) { if (importRequest > 0) importer.launch(importTypes) }
     LazyVerticalGrid(
         columns = GridCells.Adaptive(132.dp),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(bottom = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        item(span = { GridItemSpan(maxLineSpan) }) { header() }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            SectionHeading(
-                "Your playlists",
-                if (playlists.isEmpty()) "Make room for your favorites"
-                else "${playlists.size} collections",
-            ) {
-                TextButton({ importer.launch(importTypes) }) {
-                    Icon(Icons.Rounded.FileOpen, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Import")
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                SectionHeading(
+                    "Your playlists",
+                    if (playlists.isEmpty()) "Make room for your favorites"
+                    else "${playlists.size} collections",
+                ) {
+                    Row {
+                        IconButton({ create = true }) { Icon(Icons.Rounded.Add, "Create playlist") }
+                        IconButton({ importer.launch(importTypes) }) {
+                            Icon(Icons.Rounded.FileOpen, "Import playlist")
+                        }
+                    }
                 }
             }
         }
@@ -1371,10 +1332,18 @@ private fun PlaylistsScreen(
                     Icons.AutoMirrored.Rounded.QueueMusic,
                 )
             }
-        items(playlists, key = { it.id }) { p ->
+        if (playlists.isNotEmpty() && playlists.none { it.name.contains(query, true) })
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    "No matching playlists",
+                    Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        items(playlists.filter { it.name.contains(query, true) }, key = { it.id }) { p ->
             var menu by remember(p.id) { mutableStateOf(false) }
             Column(
-                Modifier.clip(RoundedCornerShape(14.dp)).clickable {
+                Modifier.padding(horizontal = 8.dp).clip(RoundedCornerShape(14.dp)).clickable {
                     vm.filter.value = LibraryFilter(playlist = p.id)
                     open()
                 }
@@ -1434,7 +1403,9 @@ private fun PlaylistsScreen(
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            SectionHeading("Smart collections", "Always up to date")
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                SectionHeading("Smart collections", "Always up to date")
+            }
         }
         items(
             listOf(
@@ -1445,8 +1416,9 @@ private fun PlaylistsScreen(
             )
         ) { (name, category, icon) ->
             Surface(
+                modifier = Modifier.padding(horizontal = 8.dp),
                 shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surface,
+                color = Color.Transparent,
                 onClick = {
                     vm.filter.value = LibraryFilter(category = category)
                     open()

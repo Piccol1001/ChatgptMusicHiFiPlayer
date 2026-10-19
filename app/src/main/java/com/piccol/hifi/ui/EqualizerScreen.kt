@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,6 +70,7 @@ fun EqualizerScreen(vm: PlayerViewModel, presetRequest: Int = 0, profiles: () ->
     val tags by vm.replayTags.collectAsStateWithLifecycle()
     var presetSheet by remember { mutableStateOf(false) }
     var editingFilter by remember { mutableStateOf<Int?>(null) }
+    var advanced by rememberSaveable { mutableStateOf(false) }
     var engineInfo by remember { mutableStateOf(false) }
     var headroomInfo by remember { mutableStateOf(false) }
     LaunchedEffect(presetRequest) { if (presetRequest > 0) presetSheet = true }
@@ -145,6 +147,11 @@ fun EqualizerScreen(vm: PlayerViewModel, presetRequest: Int = 0, profiles: () ->
                         Text(settings.preset, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Icon(Icons.Rounded.ExpandMore, null)
                     }
+                    Switch(
+                        settings.enabled,
+                        { enabled -> vm.changeDsp { it.copy(enabled = enabled) } },
+                        Modifier.semantics { contentDescription = "Equalizer enabled" },
+                    )
                     IconButton({ save = true }) {
                         Icon(Icons.Rounded.BookmarkAdd, "Save custom preset")
                     }
@@ -207,11 +214,6 @@ fun EqualizerScreen(vm: PlayerViewModel, presetRequest: Int = 0, profiles: () ->
                     val frequencies = if (settings.mode == EqMode.TEN) TEN_BANDS else THIRD_OCTAVE
                     val gains =
                         if (settings.mode == EqMode.TEN) settings.ten else settings.thirtyOne
-                    Text(
-                        "Drag a band · tap its value for exact gain",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                     Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -236,6 +238,10 @@ fun EqualizerScreen(vm: PlayerViewModel, presetRequest: Int = 0, profiles: () ->
                             ) {
                                 TextButton(
                                     { numeric = frequencyLabel(f) to (gains[i] to update) },
+                                    modifier =
+                                        Modifier.semantics {
+                                            contentDescription = "Edit ${frequencyLabel(f)} gain"
+                                        },
                                     contentPadding = PaddingValues(0.dp),
                                 ) {
                                     Text(
@@ -314,119 +320,139 @@ fun EqualizerScreen(vm: PlayerViewModel, presetRequest: Int = 0, profiles: () ->
                 }
             }
             item {
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = .08f))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Preamp", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "%+.1f dB".format(settings.preamp),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Slider(
-                    settings.preamp.toFloat(),
-                    { value -> change { it.copy(preamp = (value * 4).roundToInt() / 4.0) } },
-                    valueRange = -24f..12f,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Automatic headroom",
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Switch(
-                        settings.autoHeadroom,
-                        { enabled -> change { it.copy(autoHeadroom = enabled) } },
-                    )
-                }
-                val effective =
-                    remember(settings, format.rate) { effectivePreamp(settings, format.rate) }
-                Text(
-                    if (settings.enabled)
-                        "Compensation %+.1f dB · Applied %+.1f dB"
-                            .format(effective - settings.preamp, effective)
-                    else "EQ bypassed · applied EQ preamp 0.0 dB",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton({ headroomInfo = !headroomInfo }) {
-                    Icon(Icons.Rounded.Info, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Headroom explained")
-                }
-                if (headroomInfo)
-                    Text(
-                        "Requested preamp is your slider setting. Automatic headroom can lower it using the combined response and a 0.5 dB safety margin. Applied is the effective EQ preamp; ReplayGain is separate. When EQ is bypassed, its filters and preamp are not applied.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-            }
-            item {
                 SettingRow(
-                    "AutoEq & output profiles",
-                    "Import and assign local correction profiles",
-                    Icons.Rounded.Headphones,
-                    profiles,
+                    "Advanced controls",
+                    "Preamp, headroom, ReplayGain and output profiles",
+                    Icons.Rounded.Tune,
+                    { advanced = !advanced },
+                    trailing = {
+                        Icon(
+                            if (advanced) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                            if (advanced) "Collapse advanced controls"
+                            else "Expand advanced controls",
+                        )
+                    },
                 )
             }
-            item {
-                HorizontalDivider()
-                Text("ReplayGain", style = MaterialTheme.typography.titleLarge)
-                Row {
-                    ReplayMode.entries.forEach { mode ->
-                        FilterChip(
-                            settings.replayMode == mode,
-                            { vm.changeDsp { it.copy(replayMode = mode) } },
-                            label = { Text(mode.name) },
+            if (advanced) {
+                item {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .08f)
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Preamp", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "%+.1f dB".format(settings.preamp),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
-                }
-                Text("ReplayGain preamp: ${"%.1f".format(settings.replayPreamp)} dB")
-                Slider(
-                    settings.replayPreamp.toFloat(),
-                    { value ->
-                        vm.changeDsp { it.copy(replayPreamp = (value * 4).roundToInt() / 4.0) }
-                    },
-                    valueRange = -12f..12f,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Prevent clipping using file peak", Modifier.weight(1f))
-                    Switch(
-                        settings.preventClipping,
-                        { v -> vm.changeDsp { it.copy(preventClipping = v) } },
+                    Slider(
+                        settings.preamp.toFloat(),
+                        { value -> change { it.copy(preamp = (value * 4).roundToInt() / 4.0) } },
+                        valueRange = -24f..12f,
                     )
-                }
-                Text(
-                    if (tags.decoderGainActive)
-                        "Decoder header gain is active; extra ReplayGain is bypassed to avoid applying gain twice."
-                    else if (tags.trackGain == null && tags.albumGain == null)
-                        "No supported ReplayGain tag in the current track; no ReplayGain adjustment is applied."
-                    else
-                        "Current ReplayGain adjustment: %.2f dB".format(replayGain(settings, tags)),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "Reads ID3 TXXX and FLAC/Vorbis comments. R128/decoder gain is not reapplied. No dynamic compressor or limiter is added.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-
-            item {
-                TextButton({ engineInfo = !engineInfo }) {
-                    Text("Technical details")
-                    Icon(
-                        if (engineInfo) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                        null,
-                    )
-                }
-                if (engineInfo)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Automatic headroom",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Switch(
+                            settings.autoHeadroom,
+                            { enabled -> change { it.copy(autoHeadroom = enabled) } },
+                        )
+                    }
+                    val effective =
+                        remember(settings, format.rate) { effectivePreamp(settings, format.rate) }
                     Text(
-                        "16-bit PCM · ${format.rate} Hz · ${clips} clipped samples this service session. No bit-perfect claim. Bands at/above Nyquist are bypassed; mode conversion interpolates control gains and is approximate.",
+                        if (settings.enabled)
+                            "Compensation %+.1f dB · Applied %+.1f dB"
+                                .format(effective - settings.preamp, effective)
+                        else "EQ bypassed · applied EQ preamp 0.0 dB",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton({ headroomInfo = !headroomInfo }) {
+                        Icon(Icons.Rounded.Info, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Headroom explained")
+                    }
+                    if (headroomInfo)
+                        Text(
+                            "Requested preamp is your slider setting. Automatic headroom can lower it using the combined response and a 0.5 dB safety margin. Applied is the effective EQ preamp; ReplayGain is separate. When EQ is bypassed, its filters and preamp are not applied.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                }
+                item {
+                    SettingRow(
+                        "AutoEq & output profiles",
+                        "Import and assign local correction profiles",
+                        Icons.Rounded.Headphones,
+                        profiles,
+                    )
+                }
+                item {
+                    HorizontalDivider()
+                    Text("ReplayGain", style = MaterialTheme.typography.titleLarge)
+                    Row {
+                        ReplayMode.entries.forEach { mode ->
+                            FilterChip(
+                                settings.replayMode == mode,
+                                { vm.changeDsp { it.copy(replayMode = mode) } },
+                                label = { Text(mode.name) },
+                            )
+                        }
+                    }
+                    Text("ReplayGain preamp: ${"%.1f".format(settings.replayPreamp)} dB")
+                    Slider(
+                        settings.replayPreamp.toFloat(),
+                        { value ->
+                            vm.changeDsp { it.copy(replayPreamp = (value * 4).roundToInt() / 4.0) }
+                        },
+                        valueRange = -12f..12f,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Prevent clipping using file peak", Modifier.weight(1f))
+                        Switch(
+                            settings.preventClipping,
+                            { v -> vm.changeDsp { it.copy(preventClipping = v) } },
+                        )
+                    }
+                    Text(
+                        if (tags.decoderGainActive)
+                            "Decoder header gain is active; extra ReplayGain is bypassed to avoid applying gain twice."
+                        else if (tags.trackGain == null && tags.albumGain == null)
+                            "No supported ReplayGain tag in the current track; no ReplayGain adjustment is applied."
+                        else
+                            "Current ReplayGain adjustment: %.2f dB"
+                                .format(replayGain(settings, tags)),
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    Text(
+                        "Reads ID3 TXXX and FLAC/Vorbis comments. R128/decoder gain is not reapplied. No dynamic compressor or limiter is added.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
+                item {
+                    TextButton({ engineInfo = !engineInfo }) {
+                        Text("Technical details")
+                        Icon(
+                            if (engineInfo) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                            null,
+                        )
+                    }
+                    if (engineInfo)
+                        Text(
+                            "16-bit PCM · ${format.rate} Hz · ${clips} clipped samples this service session. No bit-perfect claim. Bands at/above Nyquist are bypassed; mode conversion interpolates control gains and is approximate.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                }
             }
         }
     }
@@ -561,7 +587,15 @@ fun EqualizerScreen(vm: PlayerViewModel, presetRequest: Int = 0, profiles: () ->
                             FilterChip(
                                 category == name,
                                 { category = name },
-                                label = { Text(name) },
+                                label = {
+                                    Text(
+                                        when (name) {
+                                            "Core" -> "General"
+                                            "Listening" -> "Listening Profiles"
+                                            else -> name
+                                        }
+                                    )
+                                },
                             )
                         }
                 }

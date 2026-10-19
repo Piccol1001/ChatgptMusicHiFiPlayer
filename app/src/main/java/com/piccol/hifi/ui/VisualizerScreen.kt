@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Paint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.semantics.semantics
@@ -56,8 +57,10 @@ fun VisualizerScreen(vm:PlayerViewModel,fullScreen:Boolean,optionsRequest:Int=0,
     val frame by frames.collectAsStateWithLifecycle(initialValue=VisualFrame())
     var options by remember{mutableStateOf(false)}
     var overlay by remember(fullScreen,playback.item?.mediaId){mutableStateOf(true)}
+    var revealControls by remember { mutableIntStateOf(0) }
+    var modeMenu by remember { mutableStateOf(false) }
     LaunchedEffect(optionsRequest){if(optionsRequest>0)options=true}
-    LaunchedEffect(fullScreen,playback.item?.mediaId){overlay=true;if(fullScreen){delay(3000);overlay=false}}
+    LaunchedEffect(fullScreen,playback.item?.mediaId,revealControls,options,modeMenu){overlay=true;if(fullScreen&&!options&&!modeMenu){delay(3000);overlay=false}}
     val context=LocalContext.current
     BackHandler(fullScreen){full(false)}
     DisposableEffect(fullScreen){val window=(context as? Activity)?.window;val controller=window?.let{WindowCompat.getInsetsController(it,it.decorView)}
@@ -67,7 +70,7 @@ fun VisualizerScreen(vm:PlayerViewModel,fullScreen:Boolean,optionsRequest:Int=0,
     val plot:@Composable (Modifier)->Unit={modifier->
         Box(modifier.clip(MaterialTheme.shapes.large).background(Color.Black)) {
             if(playback.playing)VisualDisplay(settings,frame,cover,Modifier.fillMaxSize())
-            else MusicEmptyState("Play music to start visualizing","Real audio analysis appears here during playback.","Browse Music",browse,Icons.Rounded.GraphicEq,Modifier.align(Alignment.Center))
+            else MusicEmptyState("Play music to see your sound","Real audio analysis appears here during playback.","Browse Library",browse,Icons.Rounded.GraphicEq,Modifier.align(Alignment.Center))
             if(playback.playing&&overlay)Surface(color=Color.Black.copy(alpha=.65f),shape=MaterialTheme.shapes.small,modifier=Modifier.align(Alignment.BottomStart).padding(12.dp)) {
                 Column(Modifier.padding(horizontal=10.dp,vertical=8.dp).widthIn(max=240.dp)) {
                     Text(playback.item?.mediaMetadata?.title?.toString().orEmpty(),style=MaterialTheme.typography.titleSmall,maxLines=1,overflow=TextOverflow.Ellipsis,color=Color.White)
@@ -76,16 +79,28 @@ fun VisualizerScreen(vm:PlayerViewModel,fullScreen:Boolean,optionsRequest:Int=0,
             }
         }
     }
-    if(fullScreen)Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if(playback.playing)plot(Modifier.fillMaxSize()) else MusicEmptyState("Play music to start visualizing","Choose local music to see its audio.","Browse Music",browse,Icons.Rounded.GraphicEq,Modifier.align(Alignment.Center))
-        FilledTonalIconButton({full(false)},Modifier.align(Alignment.TopEnd).padding(16.dp)){Icon(Icons.Rounded.FullscreenExit,"Exit fullscreen")}
+    if(fullScreen)Box(Modifier.fillMaxSize().background(Color.Black)
+        .clickable { revealControls++ }.semantics { contentDescription="Show visualizer controls" }) {
+        if(playback.playing)plot(Modifier.fillMaxSize()) else MusicEmptyState("Play music to see your sound","Choose local music to see its audio.","Browse Library",browse,Icons.Rounded.GraphicEq,Modifier.align(Alignment.Center))
+        if(overlay) Row(Modifier.align(Alignment.TopStart).displayCutoutPadding().padding(16.dp)
+            .clip(MaterialTheme.shapes.small).background(Color.Black.copy(alpha=.65f))) {
+            Box {
+                IconButton({modeMenu=true;revealControls++}) { Icon(Icons.Rounded.GraphicEq,"Visualization mode") }
+                DropdownMenu(modeMenu,{modeMenu=false}) {
+                    VisualMode.entries.forEach { mode -> DropdownMenuItem(text={Text(visualNames[mode.ordinal])},onClick={vm.changeVisual{it.copy(mode=mode)};modeMenu=false;revealControls++}) }
+                }
+            }
+            IconButton({vm.changeVisual{it.copy(theme=(it.theme+1)%3)};revealControls++}) { Icon(Icons.Rounded.Palette,"Visualizer color theme") }
+            IconButton({options=true;revealControls++}) { Icon(Icons.Rounded.Tune,"Visualizer settings") }
+        }
+        FilledTonalIconButton({modeMenu=false;full(false)},Modifier.align(Alignment.TopEnd).displayCutoutPadding().padding(16.dp)){Icon(Icons.Rounded.FullscreenExit,"Exit fullscreen")}
     }else BoxWithConstraints(Modifier.fillMaxSize()) {
-        val displayHeight=(maxHeight-128.dp).coerceIn(180.dp,640.dp)
+        val displayHeight=(maxHeight-136.dp).coerceIn(120.dp,900.dp)
         LazyColumn(contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             item {
                 if(playback.playing)plot(Modifier.fillMaxWidth().height(displayHeight))
                 else Surface(color=MaterialTheme.colorScheme.surface,shape=MaterialTheme.shapes.large) {
-                    MusicEmptyState("Play music to start visualizing","Six views of your music. No microphone, no simulated signal.","Browse Music",browse,Icons.Rounded.GraphicEq)
+                    MusicEmptyState("Play music to see your sound","Six views of your music. No microphone, no simulated signal.","Browse Library",browse,Icons.Rounded.GraphicEq)
                 }
             }
             item {
