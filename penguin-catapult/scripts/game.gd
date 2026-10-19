@@ -1,51 +1,54 @@
 extends Node2D
-
-const Art = preload("res://scripts/art.gd")
 const HUD = preload("res://scripts/hud.gd")
 const Sound = preload("res://scripts/sound.gd")
 const SaveData = preload("res://scripts/local_save.gd")
-enum State { MENU, LAUNCHING, TRANSITION, ATTACKING, RESULTS, PAUSED }
+const World = preload("res://scripts/world.gd")
+enum State { MENU, LAUNCHING, TRANSITION, BRIEFING, ATTACKING, RESULTS, PAUSED }
 var state: State = State.MENU
 var before_pause: State = State.MENU
 var config: Dictionary
-var ui: CanvasLayer
-var sound: Node
+var ui
+var sound
+var world
 var save_data = SaveData.new()
-var camera: Camera2D
+var test_mode := false
 var time := 0.0
 var input_lock := 0.0
-var launch_x := -60.0
-var launch_wait := 0.0
 var attempts := 0
 var successes := 0
 var score := 0
+var hits := 0
+var swing_time := 0.0
+var launch_wait := 0.0
+var catapult_kick := 0.0
 var transition_time := 0.0
 var attack_time := 0.0
-var next_spawn := 0.0
 var spawned := 0
 var resolved := 0
+var team_wait := 0.0
 var result_wait := 0.0
+var camera_x := 0.0
+var shake := 0.0
 var birds: Array[Dictionary] = []
 var bears: Array[Dictionary] = []
+var blocks: Array[Dictionary] = []
 var effects: Array[Dictionary] = []
-var launch_ghosts: Array[Dictionary] = []
+var ghosts: Array[Dictionary] = []
 var message := ""
 var message_time := 0.0
-var catapult_kick := 0.0
-var shake := 0.0
 var winner := false
-var test_mode := false
 
 func _ready() -> void:
 	config = JSON.parse_string(FileAccess.get_file_as_string("res://levels/level_01.json"))
 	save_data.load_data()
-	camera = Camera2D.new()
-	camera.position = Vector2(640,360)
-	add_child(camera)
+	world = World.new()
+	world.game = self
+	add_child(world)
 	sound = Sound.new()
 	add_child(sound)
 	sound.muted = save_data.muted
 	ui = HUD.new()
+	ui.game = self
 	add_child(ui)
 	ui.start_requested.connect(start_level)
 	ui.retry_requested.connect(start_level)
@@ -54,21 +57,24 @@ func _ready() -> void:
 	ui.home_requested.connect(show_home)
 	ui.sound_requested.connect(toggle_sound)
 	ui.next_requested.connect(show_completion)
-	show_home()
-
-func toggle_sound() -> void:
-	save_data.muted = not save_data.muted
-	sound.muted = save_data.muted
-	save_data.save_data()
+	ui.continue_requested.connect(begin_attack)
+	ui.help_requested.connect(show_help)
 	show_home()
 
 func show_home() -> void:
 	state = State.MENU
-	sound.set_paused(false)
-	camera.position = Vector2(640,360)
 	input_lock = 0.25
-	ui.menu("start", "Space / left click: launch, then dive.\nLaunch as each penguin enters the gold cradle.\nEsc: pause.  •  Sound: %s  •  Best: %d" % ["OFF" if save_data.muted else "ON", save_data.best_score])
+	camera_x = 0
+	sound.set_paused(false)
+	ui.menu("start", "One mission. Six penguins.\nSwing, launch, then dive through the ice.")
 	update_hud()
+
+func toggle_sound() -> void:
+	save_data.muted = not save_data.muted
+	sound.muted = save_data.muted
+	if not test_mode:
+		save_data.save_data()
+	ui.refresh_sound()
 
 func start_level() -> void:
 	state = State.LAUNCHING
@@ -77,54 +83,98 @@ func start_level() -> void:
 	attempts = 0
 	successes = 0
 	score = 0
-	launch_x = config.launch_start_x
-	launch_wait = 0.4
-	transition_time = 0.0
-	attack_time = 0.0
-	next_spawn = 0.0
+	hits = 0
+	swing_time = 0.0
+	launch_wait = 0.65
+	catapult_kick = 0
+	transition_time = 0
+	attack_time = 0
 	spawned = 0
 	resolved = 0
-	result_wait = 0.0
-	catapult_kick = 0.0
-	shake = 0.0
+	team_wait = 0.3
+	result_wait = 0
+	camera_x = 0
+	shake = 0
 	winner = false
 	birds.clear()
 	bears.clear()
+	blocks.clear()
 	effects.clear()
-	launch_ghosts.clear()
-	for x in config.bears:
-		bears.append({"x": float(x), "down": false})
-	camera.position = Vector2(640,360)
+	ghosts.clear()
+	for p in config.bears:
+		bears.append({"p":Vector2(p[0],p[1]),"down":false,"falling":false,"v":0.0,"fall_start":float(p[1]),"down_time":0.0})
+	var tile: float = config.tile_size
+	for row in config.platforms:
+		for i in range(int(row[2])):
+			blocks.append({"r":Rect2(row[0]+i*tile,row[1],tile,tile),"broken":false})
+	for row in config.pillars:
+		for i in range(int(row[2])):
+			blocks.append({"r":Rect2(row[0],row[1]+i*tile,tile,tile),"broken":false})
 	ui.hide_menu()
 	sound.set_paused(false)
-	feedback("Time your launch inside the gold cradle!", 2.5)
+	feedback("Wait for FIRE!  •  Space / click",2.5)
 	update_hud()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if state == State.BRIEFING:
+			return
 		toggle_pause()
 		get_viewport().set_input_as_handled()
 		return
-	var is_action: bool = (event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE) or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT)
-	if is_action:
+	var action: bool = (event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE) or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT)
+	if action:
 		act()
 		get_viewport().set_input_as_handled()
 
 func act() -> void:
-	if input_lock > 0.0:
+	if input_lock > 0:
 		return
-	match state:
-		State.LAUNCHING:
-			if launch_wait <= 0.0 and attempts < int(config.penguins):
-				finish_launch(absf(launch_x - float(config.launch_x)) <= float(config.launch_half_window))
-		State.ATTACKING:
-			for bird in birds:
-				if bird.mode == "flight" and bird.p.x >= 0.0:
-					bird.mode = "dive"
-					bird.v = Vector2(config.dive_horizontal_speed, config.dive_speed)
-					sound.play_cue("dive")
-					feedback("DIVE!",0.5)
-					break
+	if state == State.LAUNCHING and launch_wait <= 0 and attempts < int(config.penguins):
+		finish_launch(launch_ready())
+	elif state == State.ATTACKING:
+		var bird := active_bird()
+		if not bird.is_empty() and bird.mode == "flight":
+			bird.mode = "dive"
+			bird.v = Vector2(config.dive_horizontal_speed,config.dive_speed)
+			sound.play_cue("dive")
+			feedback("",0)
+
+func launch_ready() -> bool:
+	var t := swing_time/float(config.swing_seconds)
+	return t >= float(config.launch_window_start) and t <= float(config.launch_window_end)
+
+func swing_position() -> Vector2:
+	var t := clampf(swing_time/float(config.swing_seconds),0,1)
+	var angle := lerpf(config.swing_start_angle,config.swing_end_angle,smoothstep(0,1,t))
+	return Vector2(config.rope_anchor[0],config.rope_anchor[1])+Vector2(sin(angle),cos(angle))*float(config.rope_length)
+
+func finish_launch(success: bool) -> void:
+	attempts += 1
+	catapult_kick = 0.4
+	var position := swing_position()
+	if success:
+		successes += 1
+		score += int(config.points_per_launch)
+		ghosts.append({"p":position,"v":Vector2(460,-740),"life":1.5,"angle":0.5})
+		feedback("OK!",0.7)
+		sound.play_cue("launch")
+		burst(position,Color("fff47b"),16)
+	else:
+		ghosts.append({"p":position,"v":Vector2(60,180),"life":0.8,"angle":0.0})
+		feedback("Too soon!" if swing_time/float(config.swing_seconds) < float(config.launch_window_start) else "Miss!",0.85)
+		sound.play_cue("miss")
+	swing_time = 0
+	launch_wait = float(config.launch_gap)
+
+func begin_attack() -> void:
+	if state != State.BRIEFING:
+		return
+	state = State.ATTACKING
+	input_lock = 0.25
+	ui.hide_menu()
+	feedback("Space / click to dive. Keep an eye on the ice!",2.2)
+	update_hud()
 
 func toggle_pause() -> void:
 	if state == State.PAUSED:
@@ -132,46 +182,33 @@ func toggle_pause() -> void:
 		ui.hide_menu()
 		input_lock = 0.2
 		sound.set_paused(false)
-	elif state in [State.LAUNCHING, State.TRANSITION, State.ATTACKING]:
+	elif state in [State.LAUNCHING,State.TRANSITION,State.ATTACKING]:
 		before_pause = state
 		state = State.PAUSED
 		sound.set_paused(true)
-		ui.menu("pause", "The snow can wait.\nSpace or left click performs the current action.\nEsc resumes the exact same moment.")
+		ui.menu("pause","Space / click: launch or dive\nEsc: resume\nAll movement is paused.")
 
-func feedback(text_value: String, duration: float = 1.0) -> void:
+func show_help() -> void:
+	if state == State.MENU:
+		ui.menu("help","CATAPULT\nPress Space or click when FIRE! appears.\n\nATTACK\nPress once to dive. Ice breaks and bears fall.\nHit %d bears before your team runs out." % int(config.required_hits))
+	elif state in [State.LAUNCHING,State.ATTACKING]:
+		toggle_pause()
+
+func feedback(text_value: String,duration: float=1.0) -> void:
 	message = text_value
 	message_time = duration
 
-func finish_launch(success: bool) -> void:
-	attempts += 1
-	catapult_kick = 0.45
-	if success:
-		successes += 1
-		score += int(config.points_per_launch)
-		launch_ghosts.append({"p": Vector2(config.launch_x,515), "v": Vector2(420,-720), "life": 1.8, "success": true})
-		feedback("GREAT LAUNCH!  +1 penguin",0.9)
-		sound.play_cue("launch")
-		burst(Vector2(config.launch_x,540),Color("ffbd59"),12)
-	else:
-		launch_ghosts.append({"p": Vector2(launch_x,535), "v": Vector2(100,-120), "life": 0.7, "success": false})
-		feedback("Too early!" if launch_x < float(config.launch_x) else "Too late!",0.9)
-		sound.play_cue("miss")
-	launch_wait = float(config.launch_gap)
-	launch_x = config.launch_start_x
-
 func _physics_process(delta: float) -> void:
-	input_lock = maxf(0.0,input_lock-delta)
+	input_lock = maxf(0,input_lock-delta)
 	if state == State.PAUSED:
-		queue_redraw()
-		return
-	if state in [State.MENU,State.RESULTS]:
-		queue_redraw()
 		return
 	time += delta
-	message_time -= delta
-	catapult_kick = maxf(0.0,catapult_kick-delta)
-	shake = maxf(0.0,shake-delta*22.0)
-	camera.offset = Vector2(sin(time*103),cos(time*91))*shake
+	world.queue_redraw()
+	if state in [State.MENU,State.RESULTS,State.BRIEFING]:
+		return
+	message_time = maxf(0,message_time-delta)
+	catapult_kick = maxf(0,catapult_kick-delta)
+	shake = maxf(0,shake-delta*20)
 	update_effects(delta)
 	match state:
 		State.LAUNCHING:
@@ -179,79 +216,94 @@ func _physics_process(delta: float) -> void:
 				launch_wait -= delta
 			elif attempts >= int(config.penguins):
 				state = State.TRANSITION
-				transition_time = 0.0
-				input_lock = float(config.transition_seconds) + 0.2
-				feedback("%d PENGUINS AIRBORNE • GET READY TO DIVE" % successes,3.0)
+				transition_time = 0
+				input_lock = float(config.transition_seconds)+0.25
+				feedback("AIRBORNE!",1.2)
 			else:
-				launch_x += float(config.approach_speed)*delta
-				if launch_x > float(config.launch_miss_x):
+				swing_time += delta
+				if swing_time > float(config.swing_seconds):
 					finish_launch(false)
 		State.TRANSITION:
 			transition_time += delta
-			var ratio := clampf(transition_time / float(config.transition_seconds),0,1)
-			camera.position.x = 640.0 + float(config.attack_offset)*smoothstep(0.0,1.0,ratio)
-			if ratio >= 1.0:
-				state = State.ATTACKING
-				input_lock = 0.2
-				feedback("Dive the marked penguin onto a bear!",2.0)
+			if transition_time >= float(config.transition_seconds):
+				if successes == 0:
+					finish_level()
+				else:
+					state = State.BRIEFING
+					ui.menu("briefing","Hit %02d bears to complete the mission!\n\n%d penguins made it through.\nDive early: you keep moving forward." % [int(config.required_hits),successes])
 		State.ATTACKING:
 			update_attack(delta)
 	update_hud()
-	queue_redraw()
+
+func active_bird() -> Dictionary:
+	for bird in birds:
+		if bird.mode != "done":
+			return bird
+	return {}
 
 func update_attack(delta: float) -> void:
 	attack_time += delta
-	if spawned < successes and attack_time >= next_spawn:
-		birds.append({"p": Vector2(-65,config.flight_y),"v": Vector2(config.flight_speed,0),"mode": "flight", "id": spawned})
-		spawned += 1
-		next_spawn += float(config.flight_spacing_seconds)
-	for bird in birds:
-		if bird.mode == "done":
-			continue
+	var bird := active_bird()
+	if bird.is_empty():
+		team_wait -= delta
+		if spawned < successes and team_wait <= 0:
+			birds.append({"p":Vector2(50,config.flight_y),"v":Vector2(config.flight_speed,0),"mode":"flight","id":spawned,"age":0.0,"bounces":0})
+			spawned += 1
+			bird = active_bird()
+	if not bird.is_empty():
+		bird.age += delta
 		var old: Vector2 = bird.p
-		if bird.mode == "dive":
+		if bird.mode != "flight":
 			bird.v.y += float(config.gravity)*delta
 		bird.p += bird.v*delta
-		if bird.mode == "dive":
-			var hit := swept_target(old,bird.p)
-			if hit >= 0:
-				bears[hit].down = true
-				score += int(config.points_per_bear)
-				resolve_bird(bird,true)
-				continue
-			if bird.p.y >= float(config.ground_y)-10:
-				resolve_bird(bird,false)
-		elif bird.p.x > 1350:
-			resolve_bird(bird,false)
-	# Once the objective is clear, retire unused flights but settle every active dive.
-	if remaining_targets() == 0:
-		resolved += successes-spawned
-		spawned = successes
-		for bird in birds:
-			if bird.mode == "flight":
-				bird.mode = "done"
-				resolved += 1
-	# No defeat while another penguin still has a flight or a dive to resolve.
-	if spawned == successes and resolved == successes:
+		if bird.mode != "flight":
+			break_ice(old,bird.p)
+			var target := swept_target(old,bird.p)
+			if target >= 0:
+				knock_bear(target)
+				bird.bounces += 1
+				if bird.bounces <= int(config.max_bounces):
+					bird.mode = "bounce"
+					bird.v = Vector2(config.bounce_horizontal_speed,-float(config.bounce_speed))
+				else:
+					resolve_bird(bird)
+			if bird.p.y >= float(config.ground_y)+18:
+				burst(bird.p,Color("c3f9ff"),18)
+				resolve_bird(bird)
+		if bird.p.x > float(config.world_width)+40 or bird.age > float(config.bird_timeout):
+			resolve_bird(bird)
+		var target_x := clampf(bird.p.x-280.0,0,float(config.world_width)-960)
+		camera_x = lerpf(camera_x,target_x,minf(1,delta*7))
+	else:
+		camera_x = lerpf(camera_x,0,minf(1,delta*9))
+	update_bears(delta)
+	if spawned == successes and resolved == successes and not bears.any(func(b): return b.falling and not b.down):
 		result_wait += delta
 		if result_wait >= float(config.result_delay):
 			finish_level()
 
-func swept_target(from: Vector2, to: Vector2) -> int:
+func resolve_bird(bird: Dictionary) -> void:
+	if bird.mode == "done":
+		return
+	bird.mode = "done"
+	resolved += 1
+	team_wait = float(config.team_gap)
+
+func swept_target(from: Vector2,to: Vector2) -> int:
 	var nearest := INF
-	var result := -1
+	var target := -1
 	for i in range(bears.size()):
 		if bears[i].down:
 			continue
-		var rect := Rect2(Vector2(bears[i].x-float(config.bear_half_width),float(config.ground_y)-float(config.bear_height)),Vector2(float(config.bear_half_width)*2,float(config.bear_height))).grow(float(config.penguin_radius))
-		var fraction := segment_rect(from,to,rect)
-		if fraction >= 0 and fraction < nearest:
-			nearest = fraction
-			result = i
-	return result
+		var p: Vector2 = bears[i].p
+		var rect := Rect2(p-Vector2(config.bear_half_width,config.bear_height),Vector2(float(config.bear_half_width)*2,config.bear_height)).grow(float(config.penguin_radius))
+		var t := segment_rect(from,to,rect)
+		if t >= 0 and t < nearest:
+			nearest = t
+			target = i
+	return target
 
-# Slab intersection checks the complete movement segment, even at extreme dive speeds.
-func segment_rect(a: Vector2, b: Vector2, rect: Rect2) -> float:
+func segment_rect(a: Vector2,b: Vector2,rect: Rect2) -> float:
 	var low := 0.0
 	var high := 1.0
 	var movement := b-a
@@ -268,161 +320,93 @@ func segment_rect(a: Vector2, b: Vector2, rect: Rect2) -> float:
 				return -1.0
 	return low
 
-func resolve_bird(bird: Dictionary, hit: bool) -> void:
-	bird.mode = "done"
-	resolved += 1
-	var point := Vector2(float(config.attack_offset)+bird.p.x,minf(bird.p.y,float(config.ground_y)-12))
-	burst(point,Color("ffbe5b") if hit else Color.WHITE,22 if hit else 10)
-	if hit:
-		shake = 7.0
-		feedback("KAPOW!  +%d" % int(config.points_per_bear),0.8)
-		sound.play_cue("hit")
-	else:
-		feedback("Snow splash!" if bird.p.y > 400 else "Flew past!",0.6)
-		sound.play_cue("miss")
+func break_ice(a: Vector2,b: Vector2) -> void:
+	for block in blocks:
+		if not block.broken and segment_rect(a,b,block.r.grow(8)) >= 0:
+			block.broken = true
+			burst(block.r.get_center(),Color("39d9ff"),12)
+			shake = maxf(shake,2.0)
+
+func knock_bear(index: int) -> void:
+	var bear: Dictionary = bears[index]
+	if bear.down:
+		return
+	bear.down = true
+	bear.falling = false
+	bear.down_time = time
+	hits += 1
+	score += int(config.points_per_bear)
+	shake = 5.0
+	burst(bear.p-Vector2(0,45),Color("ffe35a"),18)
+	feedback("%02d / %02d" % [hits,int(config.required_hits)],0.8)
+	sound.play_cue("hit")
+
+func update_bears(delta: float) -> void:
+	for i in range(bears.size()):
+		var bear: Dictionary = bears[i]
+		if bear.down:
+			continue
+		var supported: bool = bear.p.y >= float(config.ground_y)-1
+		for block in blocks:
+			if not block.broken and absf(bear.p.y-block.r.position.y) < 2 and bear.p.x >= block.r.position.x and bear.p.x <= block.r.end.x:
+				supported = true
+		if supported and not bear.falling:
+			continue
+		if not bear.falling:
+			bear.falling = true
+			bear.fall_start = bear.p.y
+			bear.v = 0.0
+		var old_y: float = bear.p.y
+		bear.v += float(config.gravity)*delta
+		bear.p.y += bear.v*delta
+		var landing: float = config.ground_y
+		for block in blocks:
+			if not block.broken and bear.p.x >= block.r.position.x and bear.p.x <= block.r.end.x and old_y <= block.r.position.y+1 and bear.p.y >= block.r.position.y:
+				landing = minf(landing,block.r.position.y)
+		if bear.p.y >= landing:
+			bear.p.y = landing
+			bear.falling = false
+			if landing-float(bear.fall_start) >= float(config.fall_ko_distance):
+				knock_bear(i)
 
 func remaining_targets() -> int:
-	var count := 0
-	for bear in bears:
-		if not bear.down:
-			count += 1
-	return count
+	return maxi(0,int(config.required_hits)-hits)
 
 func finish_level() -> void:
 	state = State.RESULTS
-	camera.offset = Vector2.ZERO
-	winner = remaining_targets() == 0
+	winner = hits >= int(config.required_hits)
 	if not test_mode:
 		save_data.best_score = maxi(save_data.best_score,score)
 		save_data.completed = save_data.completed or winner
 		save_data.save_data()
 	sound.play_cue("win" if winner else "miss")
-	var copy := "%d / %d launched  •  %d / %d bears hit\nScore %d  •  Best %d\n%s" % [successes,int(config.penguins),bears.size()-remaining_targets(),bears.size(),score,maxi(score,save_data.best_score),"A clean sweep of the snowfield." if winner else "Try a little earlier: dives carry forward."]
+	var copy := "Bears hit: %02d / %02d\n\nBest score: %d" % [hits,int(config.required_hits),maxi(score,save_data.best_score)]
 	if successes == 0:
-		copy = "No penguins made it to the attack.\nPress when a penguin reaches the gold cradle.\nRetry for a fresh team of eight."
+		copy = "No penguins launched.\nWait until FIRE! appears, then press once."
 	ui.menu("result",copy,winner)
+	update_hud()
 
 func show_completion() -> void:
-	ui.menu("complete","You finished the first playable level!\nThis build contains one level.\nReplay to improve your launch timing and score.")
+	ui.menu("complete","Mission 1 complete!\n\nThis build contains one complete mission.\nReplay to improve your launch timing.")
 
 func update_hud() -> void:
-	match state:
-		State.LAUNCHING:
-			ui.hud.text = "01  /  CATAPULT     •     Team %d / %d     •     Airborne %d" % [attempts,int(config.penguins),successes]
-			ui.detail.text = "SPACE / CLICK  Launch in the gold cradle     |     Objective: knock out all %d bears" % config.bears.size()
-		State.TRANSITION:
-			ui.hud.text = "02  /  INCOMING     •     %d penguins ready" % successes
-			ui.detail.text = "Crossing the snowfield… Get ready to time your dives."
-		State.ATTACKING,State.RESULTS:
-			ui.hud.text = "02  /  ATTACK     •     Penguins %d     •     Bears %d     •     Score %d" % [successes-resolved,remaining_targets(),score]
-			ui.detail.text = "SPACE / CLICK  Dive the marked penguin     |     Clear every bear. All dives resolve before results."
-		State.MENU:
-			ui.hud.text = "SNOWBOUND     /     LEVEL 01"
-			ui.detail.text = "Eight penguins. Three bears. Two perfectly timed moves."
-	ui.feedback.text = message if message_time > 0 and state not in [State.MENU,State.RESULTS] else ""
+	var launch := state == State.LAUNCHING or (state == State.PAUSED and before_pause == State.LAUNCHING)
+	ui.set_status(int(config.penguins)-attempts if launch else successes-spawned,hits,int(config.required_hits),save_data.best_score,not launch and state != State.MENU)
+	ui.feedback.text = message if message_time > 0 and state not in [State.MENU,State.RESULTS,State.BRIEFING] else ""
 
 func burst(p: Vector2,color: Color,count: int) -> void:
 	for i in range(count):
-		var angle := TAU * i / count
-		effects.append({"p":p,"v":Vector2(cos(angle),sin(angle))*float(100+(i*37)%190),"life":0.6,"color":color})
+		var angle := TAU*i/count
+		effects.append({"p":p,"v":Vector2(cos(angle),sin(angle))*float(80+(i*37)%160),"life":0.65,"color":color})
 
 func update_effects(delta: float) -> void:
 	for e in effects:
 		e.life -= delta
-		e.v.y += 500*delta
+		e.v.y += 420*delta
 		e.p += e.v*delta
 	effects = effects.filter(func(e): return e.life > 0)
-	for ghost in launch_ghosts:
+	for ghost in ghosts:
 		ghost.life -= delta
-		ghost.v.y += 600*delta
+		ghost.v.y += 240*delta
 		ghost.p += ghost.v*delta
-	launch_ghosts = launch_ghosts.filter(func(e): return e.life > 0)
-
-func _draw() -> void:
-	if config == null or config.is_empty():
-		return
-	draw_landscape()
-	draw_catapult()
-	if state == State.LAUNCHING and attempts < int(config.penguins) and launch_wait <= 0:
-		Art.ellipse(self,Vector2(launch_x,570),Vector2(23,5),Color(0.13,0.36,0.48,0.18))
-		Art.penguin(self,Vector2(launch_x,533-17*clampf(1.0-absf(launch_x-float(config.launch_x))/65.0,0,1)+sin(time*16)*3),sin(time*14)*0.07,1.0,sin(time*12))
-		for i in range(mini(4,int(config.penguins)-attempts-1)):
-			Art.penguin(self,Vector2(launch_x-75*(i+1),537),0,0.85,sin(time*12+i))
-	for ghost in launch_ghosts:
-		Art.penguin(self,ghost.p,time*8,0.85)
-	var offset: float = config.attack_offset
-	for bear in bears:
-		Art.ellipse(self,Vector2(offset+bear.x,571),Vector2(48,8),Color(0.13,0.36,0.48,0.14))
-		Art.bear(self,Vector2(offset+bear.x,530 if not bear.down else 550),bear.down,time)
-		if bear.down:
-			for j in range(3):
-				var a := time*3+j*TAU/3
-				draw_circle(Vector2(offset+bear.x+cos(a)*28,488+sin(a)*8),4,Color("f4b84c"))
-	var marked := false
-	for bird in birds:
-		if bird.mode == "done":
-			continue
-		var p: Vector2 = bird.p + Vector2(offset,0)
-		if bird.mode == "flight":
-			Art.penguin(self,p+Vector2(0,sin(time*8+bird.id)*3),PI*0.37,0.8,sin(time*18))
-			if not marked and bird.p.x >= 0:
-				marked = true
-				draw_colored_polygon(PackedVector2Array([p+Vector2(-11,-60),p+Vector2(11,-60),p+Vector2(0,-44)]),Color("ef685c"))
-		else:
-			for i in range(3):
-				draw_line(p-Vector2(10+i*6,28+i*16),p-Vector2(18+i*6,58+i*16),Color(1,1,1,0.6),3,true)
-			Art.penguin(self,p,PI-0.25,0.8)
-	for e in effects:
-		var tint: Color = e.color
-		tint.a = clampf(e.life*2,0,1)
-		draw_circle(e.p,3+e.life*5,tint)
-
-func draw_landscape() -> void:
-	draw_rect(Rect2(-1280,-200,5120,1000),Color("b1e4f1"))
-	for i in range(14):
-		var x := float(i*290-300)
-		draw_colored_polygon(PackedVector2Array([Vector2(x,520),Vector2(x+165,210+(i%3)*35),Vector2(x+380,520)]),Color("81bfda"))
-		draw_colored_polygon(PackedVector2Array([Vector2(x+98,330+(i%3)*25),Vector2(x+165,210+(i%3)*35),Vector2(x+250,335+(i%3)*25),Vector2(x+177,310+(i%3)*25)]),Color("e7f6fc"))
-	for i in range(11):
-		var p := Vector2(i*330-100,140+(i%3)*45)
-		Art.ellipse(self,p,Vector2(74,18),Color("d9f2fa"))
-		Art.ellipse(self,p+Vector2(18,-15),Vector2(36,24),Color("d9f2fa"))
-	Art.ellipse(self,Vector2(500,600),Vector2(1000,180),Color("dceff7"))
-	Art.ellipse(self,Vector2(2000,630),Vector2(1000,200),Color("eaf8fd"))
-	draw_rect(Rect2(-1280,570,5120,400),Color("effaff"))
-	draw_rect(Rect2(-1280,570,5120,8),Color.WHITE)
-	draw_rect(Rect2(-1280,680,5120,60),Color("cee7f1"))
-	for i in range(60):
-		var x := float((i*191)%3600-300)
-		var y := float(592+(i*17)%75)
-		draw_line(Vector2(x,y),Vector2(x+15,y-2),Color("d2e8f2"),2,true)
-	# Signposts frame the playable areas without changing the camera zoom.
-	for offset in [0.0,float(config.attack_offset)]:
-		draw_line(Vector2(offset+1140,570),Vector2(offset+1140,474),Color("8e6855"),9)
-		draw_style_box(sign_style(),Rect2(offset+1064,468,152,43))
-		draw_string(ThemeDB.fallback_font,Vector2(offset+1080,496),"LAUNCH" if offset == 0 else "BEAR BAY",HORIZONTAL_ALIGNMENT_LEFT,-1,20,Color("f5f9f2"))
-
-func sign_style() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = Color("367c8e")
-	s.corner_radius_top_left = 6
-	s.corner_radius_top_right = 6
-	s.corner_radius_bottom_left = 6
-	s.corner_radius_bottom_right = 6
-	return s
-
-func draw_catapult() -> void:
-	var x: float = config.launch_x
-	var window: float = config.launch_half_window
-	draw_rect(Rect2(x-window,560,window*2,10),Color("ffbf58"))
-	draw_arc(Vector2(x,538),43,PI,TAU,24,Color("ffbf58"),3,true)
-	for base in [x+45,x+105]:
-		draw_line(Vector2(base,568),Vector2(x+80,516),Color("644e48"),15,true)
-		draw_circle(Vector2(base,568),12,Color("37566b"))
-	var pivot := Vector2(x+80,526)
-	var angle := -0.28+catapult_kick*3
-	var end := pivot+Vector2(-80,0).rotated(angle)
-	draw_line(pivot,end,Color("97745c"),13,true)
-	draw_line(pivot+Vector2(25,0),end+Vector2(-8,0),Color("dab78c"),3,true)
-	draw_arc(end,19,0,PI,16,Color("644e48"),7,true)
-	draw_circle(pivot,9,Color("e5bd75"))
+	ghosts = ghosts.filter(func(e): return e.life > 0)

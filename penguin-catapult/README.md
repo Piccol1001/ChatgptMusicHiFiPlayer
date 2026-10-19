@@ -1,63 +1,75 @@
-# Penguin Catapult: Snowbound
+# Penguin Catapult — reference reconstruction, v0.2.0
 
-One complete, offline, two-stage level built in **Godot 4.6.3 stable**, GDScript, Compatibility renderer. Original procedural cartoon art and synthesized sound. This is a reference-inspired prototype; exact Crazy Penguin Catapult fidelity has **not** been verified without reference footage. See [REFERENCE.md](REFERENCE.md).
+A complete offline Windows mission in **Godot 4.6.3 stable**, GDScript and the Compatibility renderer. This revision rebuilds the UI, artwork direction and core loop using the gameplay video and APK supplied by the user. It adds rope-timed catapult launches, a compact icon HUD, an ice-framed mission briefing, sequential dives, breakable ice, rebounds, falling bears and a scrolling attack field.
 
-## Play on Windows (no Godot installation needed)
+[Download the current Windows ZIP](https://github.com/Piccol1001/ChatgptMusicHiFiPlayer/raw/refs/heads/main/penguin-catapult/downloads/Snowbound-Windows-x86_64.zip)
 
-[Download the Windows game ZIP](https://github.com/Piccol1001/ChatgptMusicHiFiPlayer/raw/refs/heads/main/penguin-catapult/downloads/Snowbound-Windows-x86_64.zip). On GitHub you can also open the ZIP in `downloads/` and choose **Download raw file**.
+![Catapult stage](previews/catapult.png)
 
-1. Extract `Snowbound-Windows-x86_64.zip` to a folder on your laptop.
-2. Open the extracted folder and double-click **Snowbound.exe**. The executable contains the game data and needs no Internet connection.
-3. Click **Start Level 01**.
-4. **Catapult:** wait until each walking penguin enters the gold cradle, then press **Space** or click the playfield. Press once per penguin. Early, late, and unpressed launches miss. You get eight attempts.
-5. **Attack:** your successful penguins fly across in order. A red arrow marks the next penguin you control. Press **Space** or click to make it dive. Dives carry forward, so press a little before the penguin is directly over a bear. Each penguin can hit one bear.
-6. Knock out all three bears to win. **Esc** or **Pause** freezes the game; **Esc** resumes. Retry resets the level. Next leads to the completion screen because this deliverable has one level.
+![Attack stage](previews/attack.png)
 
-Close the window to quit. Toggle sound on the start screen. Best score, completion, and the sound setting are stored only on your computer in Godot's `user://progress.cfg` (normally `%APPDATA%\Godot\app_userdata\Penguin Catapult — Snowbound\progress.cfg`). There are no accounts, downloads, analytics, or network calls.
+## Play on Windows — no editor installation needed
 
-The Windows build is unsigned. It was exported successfully here but has not been run on Windows. If Windows shows a security prompt, verify the source and checksums before deciding whether to run it. See [VALIDATION.md](VALIDATION.md) for laptop checks still needed.
+1. Download the ZIP above and **extract it**. Open the extracted `Snowbound` folder.
+2. Double-click **Snowbound.exe**, then click **Start Mission 1**.
+3. **Catapult:** a penguin swings down from the overhead bridge. Press **Space** or click the playfield when **FIRE!** appears. Press once per penguin. Early, late and unpressed attempts miss. There are six attempts.
+4. Read the mission panel, then click **Continue**. Successful launches determine your attack team.
+5. **Attack:** each penguin flies left to right. Press **Space** or click once to dive. Aim slightly before a bear: the penguin keeps moving forward. A hit can bounce into more bears; dives also break ice and unsupported bears can fall.
+6. Hit **at least six bears** before the team is exhausted. The game waits for every remaining flight/dive and falling bear to settle before showing the result.
+7. **Esc** or **II** pauses/resumes. Retry resets the team and all ice. The final Continue leads to the mission-complete screen; this build contains one mission.
 
-## Open and edit the project
+The top-left counter shows unused penguins; the active flight is already deployed and is not included in that number. The top-right fraction shows bears hit / required hits. `TOTAL` is the current-mission hit count. Use **♪** to mute/unmute and **?** for controls. Close the window to quit.
 
-1. Download the standard **Godot 4.6.3 stable** Windows x86_64 editor (the .NET version is unnecessary).
-2. Extract Godot and run its editor executable.
-3. In Project Manager click **Import**, choose this folder's `project.godot`, then **Import & Edit**.
-4. Wait for the asset import. Press **F6** to run the open main scene, or **F5** to run the project. F5 is the simplest option.
-5. Close the game window to return to the editor.
+The game runs without Internet, accounts or background services. Sound setting, completion and best score stay in `user://progress.cfg`, normally `%APPDATA%\Godot\app_userdata\Penguin Catapult — Snowbound\progress.cfg`. Existing local progress is preserved.
 
-Keep the entire source folder together. No plugins or packages are required. The logical view is 1280×720, initially displayed at 1152×648. Resizing preserves the scene aspect ratio with letterboxing. Physics runs at 120 fixed steps per second, independently of rendering.
+The Windows executable is unsigned. Windows export was checked in Linux; actual Windows execution, hardware audio and feel still need laptop testing. See [validation](VALIDATION.md). This is a one-mission reconstruction with original art, not a complete or pixel-identical port; see [observations and assumptions](REFERENCE.md).
 
-## Where things live
+## Open the Godot project
 
-| File | Purpose |
+First [download the Godot source ZIP](https://github.com/Piccol1001/ChatgptMusicHiFiPlayer/raw/refs/heads/main/penguin-catapult/downloads/Snowbound-Godot-Source.zip) and extract it. The Windows play ZIP contains the packaged game; the source ZIP contains `project.godot` and editable files.
+
+1. Download and extract the standard **Godot 4.6.3 stable** Windows x86_64 editor. The .NET version is unnecessary.
+2. Run the editor. In Project Manager choose **Import**, select `project.godot` from this folder, then **Import & Edit**.
+3. Wait for imports, then press **F5** to play. Close the game window to return to the editor.
+
+There are no plugins or package installs. The logical viewport is **960×704**, adapting the supplied video's near-4:3 composition to a laptop. Wider windows use letterboxing. Physics runs at **120 fixed steps per second**.
+
+## Files and tuning
+
+| Location | Purpose |
 | --- | --- |
-| `scenes/main.tscn` | Main scene; attaches gameplay and creates UI/camera/audio |
-| `scripts/game.gd` | Explicit states, stage timing, movement, swept collisions, results |
-| `levels/level_01.json` | Team, bear layout, timing, speeds, gravity, collision sizes and score |
-| `scripts/hud.gd` | HUD and start/pause/result/completion menus |
-| `scripts/art.gd` | Replaceable penguin and bear drawing adapter |
-| `scripts/sound.gd` | Replaceable audio cue interface; generates original tones |
-| `scripts/local_save.gd` | Local settings and best-score file |
-| `assets/icon.svg` | Original penguin icon |
-| `tests/` | Executable gameplay regression tests and rendering/mouse checks |
+| `scenes/main.tscn` | Main scene |
+| `scripts/game.gd` | Explicit states, swing timing, flight/dive physics, swept collisions, bear/ice rules and outcomes |
+| `levels/level_01.json` | Mission layout, quota, swing/dive timing, speeds, collision sizes and scoring |
+| `scripts/world.gd` | Map, cavern, catapult, camera view and attack presentation |
+| `scripts/hud.gd`, `scripts/menu_art.gd` | Icon HUD, menus, briefing, results and celebration |
+| `scripts/art.gd`, `assets/` | Original replaceable vector art; bundled OFL fonts |
+| `scripts/sound.gd`, `scripts/local_save.gd` | Original synthesized sounds and local persistence |
+| `tools/make_art.py` | Deterministically regenerates original SVG artwork; standard Python only |
+| `tests/` | Gameplay regression and real mouse-routing/rendering checks |
 
-To tune the game, edit the JSON numbers and rerun. Coordinates are in logical pixels. Bear positions are local to the attack screen. The launch half-window is a distance; its total time is `2 × launch_half_window / approach_speed` (currently 0.272 seconds). Dives preserve a configured forward speed and accelerate downward. Those numbers are assumptions, not measurements from the original game. Art and audio can be replaced at their adapters without changing the rules.
+Edit the JSON numbers to tune the mission. Coordinates are logical pixels; bear positions are their feet. The original video's precise physics and every original collision rule are not claimed to be reproduced. No APK, original game code, extracted sprites or original audio is distributed here. Font and Godot license notices are in `licenses/`.
 
-## Export again from Godot
+## Export again
 
-Use **Editor → Manage Export Templates → Download and Install** for 4.6.3. Then **Project → Export → Windows Desktop → Export Project**. Choose a new `Snowbound.exe` location; the preset targets x86_64 and embeds the game data. Do not check “Export With Debug” for distribution. Templates are only needed to export, not to play the supplied build.
+In Godot, choose **Editor → Manage Export Templates → Download and Install** for 4.6.3. Then choose **Project → Export → Windows Desktop → Export Project**. Select `Snowbound.exe` as the output and turn off “Export With Debug”. The preset targets Windows x86_64 with embedded game data. Templates are not needed to run the supplied build.
 
-## Cloud / Linux development
+## Cloud development and checks
 
-Run `bash tools/setup-cloud.sh` once, then `source /workspace/.penguin-tools/env.sh`. Setup uses official checksum-verified downloads if tools/templates are missing; the already prepared machine reuses them. It leaves the unrelated Android app unchanged.
+Use the existing checkout; tasks are already isolated. Run `bash tools/setup-cloud.sh`, then `source /workspace/.penguin-tools/env.sh`. Prepared tooling and official checksum-verified templates are reused. No server or credentials are needed.
 
 ```sh
 cd /workspace/ChatgptMusicHiFiPlayer/penguin-catapult
 godot --headless --editor --import --quit
 godot --headless --script tests/gameplay_test.gd
-godot --path .  # requires a graphical display
+# With a graphical display:
+godot --path .
+# Optional rendered input checks, with DISPLAY set for your X11 session:
+godot --audio-driver Dummy --resolution 960x704 --script tests/presentation_capture.gd
+# Export and package:
 mkdir -p builds/windows
 godot --headless --export-release 'Windows Desktop' builds/windows/Snowbound.exe
+python3 tools/package_release.py
 ```
 
-No server or credentials are required. `tests/presentation_capture.gd` requires an X11 display and tests real mouse routing while capturing menu/gameplay screens. Set `DISPLAY` for your display; run `godot --audio-driver Dummy --resolution 1280x720 --script tests/presentation_capture.gd`. Cloud audio hardware is unavailable, so audible quality needs a laptop check.
+The separate Android music-player application and its release/signing metadata are unchanged.
