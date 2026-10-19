@@ -1,6 +1,6 @@
 # Prebuilt APKs
 
-Latest: **0.6.0 (versionCode 6)**. Install [HiFiPlayer_v0.6.0_debug.apk](HiFiPlayer_v0.6.0_debug.apk), signed with the established development certificate. The [unsigned release APK](HiFiPlayer_v0.6.0_release-unsigned.apk) is not installable. Both embedded versions, package identity, signing status and all historical checksums were verified. An in-place update over the retained 0.5.0 installation succeeded with all six database/DataStore file hashes unchanged. The source revision is recorded in releases/history.json.
+Latest: **0.6.1 (versionCode 7)**. Install [HiFiPlayer_v0.6.1_debug.apk](HiFiPlayer_v0.6.1_debug.apk), signed with the established development certificate. The [unsigned release APK](HiFiPlayer_v0.6.1_release-unsigned.apk) is not installable. Both embedded versions, package identity, signing status and all eight APK checksums were verified. Source revision: `634ff20176894e805b130a05317d8048b05efb34` (clean); the immutable audit is in releases/history.json. The previous 0.6.0 APKs remain available with their original metadata and bytes. An in-place update over the retained 0.6.0 installation succeeded with all seven private database/data file hashes unchanged before relaunch.
 
 The 0.5.0 files below are retained historical evaluation artifacts. Future verified releases are appended with `HiFiPlayer_v<version>_<variant>.apk` names; see [RELEASES.md](../../RELEASES.md), [CHANGELOG.md](../../CHANGELOG.md) and the [release workflow](../../docs/RELEASE_WORKFLOW.md). Do not overwrite or relabel old files.
 

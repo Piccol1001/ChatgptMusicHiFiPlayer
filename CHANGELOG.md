@@ -4,6 +4,30 @@ Semantic Versioning: MAJOR = significant architectural changes; MINOR = new func
 
 <!-- releases -->
 
+## 0.6.1 — 2026-10-19
+
+Android versionCode: `7`.
+
+### New features
+
+- None.
+
+### Bug fixes
+
+- Preserve Equalizer, Visualizer and player entry points through the consolidated navigation, including notification/widget intents and route aliases.
+- Make library permission onboarding distinct from a granted but empty library, and add song-row long-press actions.
+
+### UI improvements
+
+- Consolidate primary navigation into Library, Playing and Audio; move playlists and playlist search into Library.
+- Add compact independent Equalizer/Visualizer tabs with discoverable audio output and AutoEq access.
+- Centralize screen headers and three-item navigation, use neutral category tabs and retain the mini-player above navigation, including Settings.
+- Collapse advanced EQ controls while retaining numeric gain/filter editing, presets, headroom and ReplayGain.
+- Refine offline empty states, source-format information and reduce-motion transitions.
+- Open bundled offline license documents on demand from a compact list.
+- Restore temporary fullscreen visualizer mode/color/settings controls on tap, and reserve room for portrait player actions and EQ frequency labels.
+
+
 ## 0.6.0 — 2026-10-18
 
 Android versionCode: `6`.

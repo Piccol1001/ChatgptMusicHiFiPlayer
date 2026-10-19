@@ -34,3 +34,12 @@ Verified build/packaging date in Asia/Kuala_Lumpur; GitHub publication occurs se
 | --- | --- | --- | --- | --- |
 | [HiFiPlayer_v0.6.0_debug.apk](artifacts/apk/HiFiPlayer_v0.6.0_debug.apk) | 0.6.0 | 6 | debug-signed | `c8e7650e11467ed04274277e643ee3b0eb63beb79935ca64eea4785066946b55` |
 | [HiFiPlayer_v0.6.0_release-unsigned.apk](artifacts/apk/HiFiPlayer_v0.6.0_release-unsigned.apk) | 0.6.0 | 6 | unsigned | `6eca7eabf36d1cce0d699170e933cae0d99d2d6a6c577bdc9cfb53fc5ceffcb0` |
+
+## 0.6.1 (code 7) — 2026-10-19
+
+Verified build/packaging date in Asia/Kuala_Lumpur; GitHub publication occurs separately.
+
+| APK | Embedded versionName | Embedded versionCode | Signing | SHA-256 |
+| --- | --- | --- | --- | --- |
+| [HiFiPlayer_v0.6.1_debug.apk](artifacts/apk/HiFiPlayer_v0.6.1_debug.apk) | 0.6.1 | 7 | debug-signed | `52b9c9c23c76b8840f1e02156f7acd40d6a0dd3b70f4e81ffe2c0942e950b508` |
+| [HiFiPlayer_v0.6.1_release-unsigned.apk](artifacts/apk/HiFiPlayer_v0.6.1_release-unsigned.apk) | 0.6.1 | 7 | unsigned | `60375b3891fed7e3a6242c14dee3b27d259cd81c9737272712f094d5b650b89a` |

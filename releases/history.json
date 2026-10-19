@@ -84,6 +84,46 @@
           "certificateSha256": null
         }
       ]
+    },
+    {
+      "versionName": "0.6.1",
+      "versionCode": 7,
+      "releaseDate": "2026-10-19",
+      "dateEvidence": "Verified build/packaging date in Asia/Kuala_Lumpur; GitHub publication occurs separately.",
+      "sourceCommit": "634ff20176894e805b130a05317d8048b05efb34",
+      "sourceDirty": false,
+      "changes": {
+        "features": [
+          "None."
+        ],
+        "fixes": [
+          "Preserve Equalizer, Visualizer and player entry points through the consolidated navigation, including notification/widget intents and route aliases.",
+          "Make library permission onboarding distinct from a granted but empty library, and add song-row long-press actions."
+        ],
+        "ui": [
+          "Consolidate primary navigation into Library, Playing and Audio; move playlists and playlist search into Library.",
+          "Add compact independent Equalizer/Visualizer tabs with discoverable audio output and AutoEq access.",
+          "Centralize screen headers and three-item navigation, use neutral category tabs and retain the mini-player above navigation, including Settings.",
+          "Collapse advanced EQ controls while retaining numeric gain/filter editing, presets, headroom and ReplayGain.",
+          "Refine offline empty states, source-format information and reduce-motion transitions.",
+          "Open bundled offline license documents on demand from a compact list.",
+          "Restore temporary fullscreen visualizer mode/color/settings controls on tap, and reserve room for portrait player actions and EQ frequency labels."
+        ]
+      },
+      "artifacts": [
+        {
+          "path": "artifacts/apk/HiFiPlayer_v0.6.1_debug.apk",
+          "sha256": "52b9c9c23c76b8840f1e02156f7acd40d6a0dd3b70f4e81ffe2c0942e950b508",
+          "signing": "debug-signed",
+          "certificateSha256": "322612b8f4ffae7f3e47ac07f9f4357e1944ecc8c4c71a1ee0cbfd013a2d2428"
+        },
+        {
+          "path": "artifacts/apk/HiFiPlayer_v0.6.1_release-unsigned.apk",
+          "sha256": "60375b3891fed7e3a6242c14dee3b27d259cd81c9737272712f094d5b650b89a",
+          "signing": "unsigned",
+          "certificateSha256": null
+        }
+      ]
     }
   ]
 }
